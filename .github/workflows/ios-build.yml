@@ -305,9 +305,10 @@ jobs:
               _, r = api("GET", f"https://api.appstoreconnect.apple.com/v1/buildUploadFiles/{file_id}")
               attrs = r.get("data", {}).get("attributes", {})
               state = attrs.get("state")
-              print(f"  poll {attempt+1}: state={state} assetDeliveryState={attrs.get('assetDeliveryState')}")
-              if state == "FAILED": print("ERROR: FAILED"); sys.exit(1)
-              if state == "COMPLETE": break
+              ads = attrs.get("assetDeliveryState") or {}
+              print(f"  poll {attempt+1}: state={state} assetDeliveryState={ads.get('state')} errors={ads.get('errors')}")
+              if state == "FAILED" or ads.get("state") == "FAILED": print("ERROR: FAILED"); sys.exit(1)
+              if state == "COMPLETE" or ads.get("state") == "COMPLETE": print("UPLOAD ASSET DELIVERY COMPLETE"); break
           PY
 
       - name: Verify builds on Apple server (ground truth)
@@ -341,7 +342,7 @@ jobs:
           app_id = apps["data"][0]["id"]; print(f"APP id={app_id}")
           upload_start_iso = os.environ.get("UPLOAD_START_ISO")
           found_new = False
-          for attempt in range(15):
+          for attempt in range(60):
               builds = api_get(f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&sort=-uploadedDate&limit=10")
               for b in builds.get("data", []):
                   a = b["attributes"]; uploaded = a.get("uploadedDate")

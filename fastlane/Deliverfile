@@ -1,5 +1,4 @@
 app_identifier "com.coldtank.cards"
-username ENV["APPLE_ID"]
 team_id ENV["TEAM_ID"]
 metadata_path "./fastlane/metadata"
 screenshots_path "./fastlane/screenshots"
