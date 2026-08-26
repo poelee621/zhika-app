@@ -33,16 +33,19 @@ platform :ios do
     )
   end
 
-  # 上传 IPA 到 TestFlight（pilot，走验证过的路径，自动等待 build 处理完成并分发）
-  lane :upload_to_testflight do
+  # 上传 IPA 到 TestFlight（pilot 走 Transporter 验证过的路径）
+  #
+  # ⚠️ lane 名绝不能叫 upload_to_testflight —— 与 fastlane 内置 action 同名时，
+  #    lane 体内的 upload_to_testflight(...) 会被解析成 lane 自己 → 无限自我递归
+  #    → SystemStackError（报错栈顶显示在 tty-screen，极易误判为环境问题）。
+  lane :beta do
     upload_to_testflight(
       ipa: "build/export/App.ipa",
+      app_identifier: "com.coldtank.cards",
       api_key_path: "./api_key.json",
-      team_id: ENV["TEAM_ID"],
-      skip_waiting_for_build_processing: false,
-      wait_for_uploaded_build: true,
-      distribute_external: false,
-      notify_external_testers: false
+      # 只上传 + 等 Apple 处理完成确认 Build 建出来，不分发给测试员（还没配 tester）
+      skip_submission: true,
+      skip_waiting_for_build_processing: false
     )
   end
 end
