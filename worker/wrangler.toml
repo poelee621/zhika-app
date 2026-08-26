@@ -1,0 +1,17 @@
+name = "zhika-gateway"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+# 可选：KV 持久化会员状态（不绑定时降级为内存）
+# [[kv_namespaces]]
+# binding = "ZHIKA_KV"
+
+# 视觉模型（OCR 用，智谱 GLM-4V）
+[vars]
+VISION_BASE = "https://open.bigmodel.cn/api/paas/v4"
+VISION_MODEL = "glm-4v-plus"
+
+# 敏感密钥走 secret（不要写进此文件）：
+#   npx wrangler secret put APPLE_SHARED_SECRET
+#   npx wrangler secret put RC_WEBHOOK_SECRET
+#   npx wrangler secret put VISION_API_KEY

@@ -1,0 +1,34 @@
+{
+  "name": "zhika-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "知卡 · 把长文/视频/截图一键提炼成可复习可分享的知识卡片 (Capacitor iOS)",
+  "scripts": {
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "test:llm": "node scripts/test_llm.mjs"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/camera": "^6.1.1",
+    "@revenuecat/purchases-capacitor": "^9.2.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/ios": "^6.1.2",
+    "playwright": "^1.62.1",
+    "typescript": "^5.5.4"
+  },
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/poelee621/zhika-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/poelee621/zhika-app/issues"
+  },
+  "homepage": "https://github.com/poelee621/zhika-app#readme"
+}

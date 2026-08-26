@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>知卡 · 隐私政策</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 720px; margin: 0 auto; padding: 28px 20px 60px; color: #1c2033; line-height: 1.8; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #8a90a6; font-size: 13px; margin-bottom: 24px; }
+  h2 { font-size: 16px; margin: 28px 0 8px; color: #4a4f6b; }
+  p, li { font-size: 14px; }
+  ul { padding-left: 20px; }
+  .box { background: #f5f7ff; border-left: 3px solid #6c8cff; padding: 12px 16px; border-radius: 8px; margin: 12px 0; font-size: 13.5px; }
+  a { color: #6c8cff; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #eee; color: #8a90a6; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>隐私政策</h1>
+  <div class="sub">知卡（把内容变成知识卡片）· 最近更新：2026-08-26</div>
+
+  <div class="box">
+    <b>一句话总结：</b>我们不收集你的真实身份，不卖你的数据。你粘贴的链接、文字、截图只用于为你生成知识卡片，且由你配置的 AI 服务商处理。
+  </div>
+
+  <h2>1. 我们收集什么</h2>
+  <p>知卡 <b>不要求注册账号</b>，因此默认不收集姓名、手机号、邮箱、地理位置等个人身份信息。我们仅在以下情况接触数据：</p>
+  <ul>
+    <li><b>你粘贴的链接 / 文本 / 截图</b>：用于提取内容并生成知识卡片。</li>
+    <li><b>订阅状态</b>：由 Apple / RevenueCat 处理，用于解锁 Pro 会员功能。</li>
+  </ul>
+
+  <h2>2. 内容如何处理</h2>
+  <p>你提供的链接、文字或图片（经设备端 OCR 转为文字后）会发送到你配置的 AI 服务商（DeepSeek / 智谱 GLM / 通义千问 / OpenAI），由其生成卡片。我们作为应用本身<b>不中转、不留存</b>这些请求内容。</p>
+  <p>多源摄取（文章 / 公众号 / 视频文案 / 截图识别）经由我们部署的 Cloudflare Worker 中转，仅做内容提取与转发，<b>不存储</b>你的原文。</p>
+
+  <h2>3. 相机与照片权限</h2>
+  <p>当你使用「截图」模式识别电子书 / 文章图片时，App 会请求相机或照片权限。<b>图片仅在本机读取并转为文字后发送 AI 服务商</b>，我们服务器不存储你的原图。</p>
+
+  <h2>4. 订阅与支付</h2>
+  <p>会员订阅通过 <b>Apple App Store 内购（由 RevenueCat 协助）</b>完成。支付由 Apple 直接处理，我们<b>无法获取也不会存储</b>你的信用卡号、Apple ID 密码等支付凭证。订阅记录由 Apple / RevenueCat 管理，你可随时在系统「设置 → Apple ID → 订阅」中查看或取消。</p>
+
+  <h2>5. 数据共享与出售</h2>
+  <p>我们<b>不会向任何第三方出售</b>你的个人信息或内容。除为完成上述生成 / 订阅所必需（即你选择的服务商与支付渠道）外，不与第三方共享。</p>
+
+  <h2>6. 你的权利</h2>
+  <ul>
+    <li>随时取消订阅（Apple 系统设置内操作）。</li>
+    <li>清除本机复习数据（App 内复习区可删除）。</li>
+    <li>对本政策有任何疑问，可联系我们删除相关本地数据。</li>
+  </ul>
+
+  <h2>7. 儿童隐私</h2>
+  <p>本应用分级为 4+，不面向儿童收集信息，不含不良内容。</p>
+
+  <h2>8. 联系我们</h2>
+  <p>隐私相关咨询：privacy@coldtank.example<br>商务 / 反馈：zhika@coldtank.example</p>
+
+  <footer>© 2026 知卡 · 宁波烯冷新能源科技有限公司 出品</footer>
+</body>
+</html>

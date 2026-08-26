@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+dist/
+*.xcarchive
+*.ipa
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Secrets & credentials (never commit)
+*.mobileprovision.b64
+*.p12
+*.p8
+.env
+.env.local
+
+# Fastlane (generated)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/.DS_Store
+
+# Xcode user data
+xcuserdata/
+DerivedData/

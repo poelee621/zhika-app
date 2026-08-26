@@ -1,0 +1,409 @@
+name: iOS Build & Upload to TestFlight
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: |
+          echo "--- available Xcode versions ---"
+          ls /Applications | grep Xcode || true
+          echo "--- selecting Xcode 26 ---"
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
+          echo "--- active Xcode ---"
+          xcodebuild -version
+          echo "--- available iOS SDKs ---"
+          xcodebuild -showsdks | grep -E 'iphoneos|iOS'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps & sync iOS platform
+        run: |
+          npm install --legacy-peer-deps
+          # ios/ 已提交到仓库（含相机权限等原生配置），已存在则跳过 cap add（避免交互挂起）
+          [ -d ios ] || npx cap add ios
+          npx cap sync ios
+
+      - name: Import signing certificate
+        env:
+          P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+        run: |
+          echo "P12_BASE64 length: ${#P12_BASE64}"
+          echo "$P12_BASE64" | base64 --decode > dist.p12
+          echo "Decoded dist.p12 size: $(stat -f%z dist.p12 2>/dev/null || stat -c%s dist.p12 2>/dev/null)"
+          echo "P12_PASSWORD length: ${#P12_PASSWORD}"
+          openssl pkcs12 -in dist.p12 -passin pass:"$P12_PASSWORD" -nokeys -info 2>&1 | head -5
+          security create-keychain -p temp build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p temp build.keychain
+          security import dist.p12 -k build.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k temp build.keychain
+
+      - name: Install provisioning profile
+        env:
+          PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          echo "PROFILE_BASE64 length: ${#PROFILE_BASE64}"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/Zhika_Distribution.mobileprovision"
+          echo "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+          echo "Decoded profile size: $(stat -f%z "$PROFILE_PATH" 2>/dev/null || stat -c%s "$PROFILE_PATH" 2>/dev/null)"
+          security cms -D -i "$PROFILE_PATH" > /tmp/profile.plist
+          PROFILE_NAME=$(plutil -extract Name raw /tmp/profile.plist)
+          PROFILE_UUID=$(plutil -extract UUID raw /tmp/profile.plist)
+          PROFILE_TEAM=$(python3 -c "import plistlib; d=plistlib.loads(open('/tmp/profile.plist','rb').read()); t=d.get('TeamIdentifier'); print(t[0] if isinstance(t,list) else t)")
+          echo "PROFILE_NAME=$PROFILE_NAME"
+          echo "PROFILE_UUID=$PROFILE_UUID"
+          echo "PROFILE_TEAM=$PROFILE_TEAM"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_TEAM=$PROFILE_TEAM" >> "$GITHUB_ENV"
+
+      - name: Prepare export options
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>${PROFILE_TEAM}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.coldtank.cards</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Force signing settings in Xcode project
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          python3 - << 'PY'
+          import re, os
+          team = os.environ.get("PROFILE_TEAM") or os.environ["TEAM_ID"]
+          profile_name = os.environ["PROFILE_NAME"]
+          pbj = "ios/App/App.xcodeproj/project.pbxproj"
+          with open(pbj, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          def inject_signing(match):
+              block = match.group(1)
+              if "DEVELOPMENT_TEAM" not in block:
+                  block = block.rstrip("\t\n") + f"\n\t\t\t\tDEVELOPMENT_TEAM = {team};\n"
+              else:
+                  block = re.sub(r'DEVELOPMENT_TEAM = [^;]*;', f'DEVELOPMENT_TEAM = {team};', block)
+              if "CODE_SIGN_STYLE" not in block:
+                  block = block.rstrip("\t\n") + '\t\t\t\tCODE_SIGN_STYLE = Manual;\n'
+              else:
+                  block = re.sub(r'CODE_SIGN_STYLE = [^;]*;', 'CODE_SIGN_STYLE = Manual;', block)
+              if "CODE_SIGN_IDENTITY" not in block:
+                  block = block.rstrip("\t\n") + '\t\t\t\tCODE_SIGN_IDENTITY = "iPhone Distribution";\n'
+              else:
+                  block = re.sub(r'CODE_SIGN_IDENTITY = "[^"]*";', 'CODE_SIGN_IDENTITY = "iPhone Distribution";', block)
+              if "PROVISIONING_PROFILE_SPECIFIER" not in block:
+                  block = block.rstrip("\t\n") + f'\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile_name}";\n'
+              return match.group(0).replace(match.group(1), block)
+
+          text = re.sub(r'buildSettings = \{([^}]*)\};', inject_signing, text, flags=re.DOTALL)
+
+          with open(pbj, "w", encoding="utf-8") as f:
+              f.write(text)
+          print("Injected signing settings into all buildSettings blocks")
+          PY
+          echo "--- signing settings in project.pbxproj ---"
+          grep -E 'DEVELOPMENT_TEAM|CODE_SIGN_STYLE|CODE_SIGN_IDENTITY|PROVISIONING_PROFILE_SPECIFIER' ios/App/App.xcodeproj/project.pbxproj | head -40
+
+      - name: Inject custom app icon
+        run: |
+          SRC="app-icon/AppIcon.appiconset"
+          if [ ! -d "$SRC" ]; then
+            echo "!!! no custom icon set, using Capacitor default"
+            exit 0
+          fi
+          echo "--- source icon set ($(ls "$SRC" | wc -l) files) ---"
+          ls -la "$SRC"
+          TARGETS=$(find ios -type d -name "AppIcon.appiconset" 2>/dev/null)
+          echo "found targets: $TARGETS"
+          if [ -z "$TARGETS" ]; then
+            DEFAULT="ios/App/App/Assets.xcassets/AppIcon.appiconset"
+            if [ -d "$DEFAULT" ]; then TARGETS="$DEFAULT"; fi
+          fi
+          for target in $TARGETS; do
+            rm -rf "$target"
+            cp -r "$SRC" "$target"
+            echo "injected: $target"
+          done
+
+      - name: Validate icon sizes (fail early if Apple-required sizes missing)
+        continue-on-error: true
+        run: |
+          python3 - << 'PY'
+          import json, glob, os, struct, sys
+          def png_size(path):
+              with open(path, "rb") as f:
+                  sig = f.read(8)
+                  if sig != b"\x89PNG\r\n\x1a\n": return None
+                  f.seek(16); w, h = struct.unpack(">II", f.read(8)); return w, h
+          REQUIRED = {20, 29, 40, 57, 58, 60, 76, 80, 87, 114, 120, 152, 167, 180, 1024}
+          targets = glob.glob("ios/**/AppIcon.appiconset", recursive=True)
+          if not targets:
+              print("WARN: no AppIcon.appiconset after injection; will use Capacitor default")
+              sys.exit(0)
+          ok = True
+          for t in targets:
+              with open(os.path.join(t, "Contents.json")) as f: spec = json.load(f)
+              present = set()
+              for img in spec["images"]:
+                  fn = img.get("filename")
+                  if not fn: continue
+                  path = os.path.join(t, fn)
+                  if not os.path.exists(path): print(f"ERROR: {t} references {fn} missing"); ok = False; continue
+                  sz = png_size(path)
+                  if not sz: print(f"ERROR: {t}/{fn} not PNG"); ok = False; continue
+                  w, h = sz
+                  sw, _ = img["size"].split("x"); scale = int(img["scale"].rstrip("x"))
+                  exp = round(float(sw) * scale)
+                  if w != exp or h != exp: print(f"ERROR: {t}/{fn} {w}x{h} expected {exp}x{exp}"); ok = False
+                  else: present.add(exp)
+              missing = REQUIRED - present
+              if missing: print(f"ERROR: {t} missing sizes {sorted(missing)}"); ok = False
+          if not ok: print("ICON VALIDATION FAILED"); sys.exit(1)
+          print("ICON VALIDATION PASSED")
+          PY
+
+      - name: Bump build number
+        run: |
+          PBX="ios/App/App.xcodeproj/project.pbxproj"
+          python3 - "$PBX" "${{ github.run_number }}" << 'PY'
+          import sys, re
+          path, num = sys.argv[1], sys.argv[2]
+          with open(path, encoding="utf-8") as f: t = f.read()
+          before = re.search(r'CURRENT_PROJECT_VERSION = ([^;]+);', t)
+          t, n = re.subn(r'CURRENT_PROJECT_VERSION = [^;]+;', f'CURRENT_PROJECT_VERSION = {num};', t)
+          with open(path, "w", encoding="utf-8") as f: f.write(t)
+          print(f"before: {before.group(1) if before else 'MISSING'} -> patched {n}")
+          PY
+
+      - name: Archive
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release \
+            -archivePath build/Zhika.xcarchive archive -allowProvisioningUpdates
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive -archivePath build/Zhika.xcarchive \
+            -exportPath build/export -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates
+          ls -la build/export/
+
+      - name: Verify build number in IPA
+        run: |
+          set -e
+          IPA_PATH=$(ls build/export/*.ipa | head -1)
+          rm -f /tmp/ipa_info.plist
+          unzip -p "$IPA_PATH" "Payload/*.app/Info.plist" > /tmp/ipa_info.plist 2>/dev/null || \
+          unzip -p "$IPA_PATH" "Payload/App.app/Info.plist" > /tmp/ipa_info.plist
+          ACTUAL=$(plutil -extract CFBundleVersion raw /tmp/ipa_info.plist)
+          EXPECTED=${{ github.run_number }}
+          if [ "$ACTUAL" != "$EXPECTED" ]; then echo "ERROR: CFBundleVersion mismatch"; exit 1; fi
+
+      - name: Upload IPA to TestFlight (App Store Connect API)
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+        run: |
+          echo "UPLOAD_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          python3 -m pip install --quiet cryptography >/dev/null 2>&1 || pip3 install --quiet cryptography >/dev/null 2>&1 || true
+          python3 - << 'PY'
+          import os, base64, time, json, sys, subprocess, urllib.request, urllib.error, hashlib
+          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+          from cryptography.hazmat.primitives.asymmetric import ec
+          from cryptography.hazmat.primitives import hashes, serialization
+          key_id = os.environ["APPLE_API_KEY_ID"]; issuer = os.environ["APPLE_API_ISSUER_ID"]
+          key = serialization.load_pem_private_key(base64.b64decode(os.environ["APPLE_API_KEY_B64"]), password=None)
+          def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+          now = int(time.time())
+          h = b64url(json.dumps({"alg": "ES256", "kid": key_id, "typ": "JWT"}).encode())
+          p = b64url(json.dumps({"iss": issuer, "iat": now - 20, "exp": now + 1200, "aud": "appstoreconnect-v1"}).encode())
+          der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
+          jwt = f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
+          def api(method, url, body=None, extra=None):
+              data = json.dumps(body).encode() if body is not None else None
+              hd = {"Authorization": f"Bearer {jwt}", "Accept": "application/json", "Content-Type": "application/json"}
+              if extra: hd.update(extra)
+              req = urllib.request.Request(url, data=data, method=method, headers=hd)
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as resp: return resp.status, json.load(resp)
+              except urllib.error.HTTPError as e:
+                  print(f"HTTPError {e.code} on {method} {url}"); print(e.read().decode()[:1500]); sys.exit(1)
+          ipa = subprocess.run("ls build/export/*.ipa | head -1", shell=True, capture_output=True, text=True).stdout.strip()
+          if not ipa: print("ERROR: no IPA found"); sys.exit(1)
+          size = os.path.getsize(ipa)
+          unzip = subprocess.run(f"unzip -p '{ipa}' 'Payload/*.app/Info.plist'", shell=True, capture_output=True).stdout or \
+              subprocess.run(f"unzip -p '{ipa}' 'Payload/App.app/Info.plist'", shell=True, capture_output=True).stdout
+          with open("/tmp/ipa_info.plist", "wb") as f: f.write(unzip)
+          ver = subprocess.run(["plutil", "-extract", "CFBundleShortVersionString", "raw", "/tmp/ipa_info.plist"], capture_output=True, text=True).stdout.strip()
+          bno = subprocess.run(["plutil", "-extract", "CFBundleVersion", "raw", "/tmp/ipa_info.plist"], capture_output=True, text=True).stdout.strip()
+          print(f"IPA={ipa} version={ver} build={bno}")
+          apps = api("GET", "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")[1]
+          if not apps.get("data"): print("ERROR: app record not found for com.coldtank.cards"); sys.exit(1)
+          app_id = apps["data"][0]["id"]; print(f"app_id={app_id}")
+          st, bu = api("POST", "https://api.appstoreconnect.apple.com/v1/buildUploads", {
+              "data": {"type": "buildUploads", "attributes": {"cfBundleShortVersionString": ver, "cfBundleVersion": bno, "platform": "IOS"},
+                       "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
+          bu_id = bu["data"]["id"]; print(f"buildUpload created: {bu_id}")
+          st2, buf = api("POST", "https://api.appstoreconnect.apple.com/v1/buildUploadFiles", {
+              "data": {"type": "buildUploadFiles", "attributes": {"fileName": os.path.basename(ipa), "fileSize": size, "assetType": "ASSET", "uti": "com.apple.ipa"},
+                       "relationships": {"buildUpload": {"data": {"type": "buildUploads", "id": bu_id}}}}})
+          file_id = buf["data"]["id"]; ops = buf["data"]["attributes"]["uploadOperations"]
+          print(f"buildUploadFile created ({st2}), {len(ops)} ops")
+          with open(ipa, "rb") as f: data = f.read()
+          for i, op in enumerate(ops):
+              o = op["offset"]; l = op["length"]; url = op["url"]; chunk = data[o:o+l]
+              hd = dict(op.get("headers", {})); hd.pop("Content-Length", None)
+              req = urllib.request.Request(url, data=chunk, method="PUT", headers=hd)
+              try:
+                  with urllib.request.urlopen(req, timeout=600) as resp: print(f"  PUT part {i+1}/{len(ops)} -> {resp.status}")
+              except urllib.error.HTTPError as e:
+                  print(f"  PUT FAILED part {i+1}: {e.code} {e.read().decode()[:500]}"); sys.exit(1)
+          st4, resp4 = api("PATCH", f"https://api.appstoreconnect.apple.com/v1/buildUploadFiles/{file_id}", {"data": {"type": "buildUploadFiles", "id": file_id, "attributes": {"uploaded": True}}})
+          print(f"commit -> status={st4} state={resp4.get('data',{}).get('attributes',{}).get('state','?')}")
+          for attempt in range(30):
+              time.sleep(20)
+              _, r = api("GET", f"https://api.appstoreconnect.apple.com/v1/buildUploadFiles/{file_id}")
+              attrs = r.get("data", {}).get("attributes", {})
+              state = attrs.get("state")
+              print(f"  poll {attempt+1}: state={state} assetDeliveryState={attrs.get('assetDeliveryState')}")
+              if state == "FAILED": print("ERROR: FAILED"); sys.exit(1)
+              if state == "COMPLETE": break
+          PY
+
+      - name: Verify builds on Apple server (ground truth)
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          UPLOAD_START_ISO: ${{ env.UPLOAD_START_ISO }}
+        run: |
+          python3 -m pip install --quiet cryptography >/dev/null 2>&1 || pip3 install --quiet cryptography >/dev/null 2>&1 || true
+          python3 - << 'PY'
+          import os, time, json, base64, sys, urllib.request, urllib.error
+          from datetime import datetime
+          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+          from cryptography.hazmat.primitives.asymmetric import ec
+          from cryptography.hazmat.primitives import hashes, serialization
+          key_id = os.environ["APPLE_API_KEY_ID"]; issuer = os.environ["APPLE_API_ISSUER_ID"]
+          key = serialization.load_pem_private_key(base64.b64decode(os.environ["APPLE_API_KEY_B64"]), password=None)
+          def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+          def make_jwt():
+              now = int(time.time())
+              h = b64url(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode())
+              p = b64url(json.dumps({"iss":issuer,"iat":now-20,"exp":now+600,"aud":"appstoreconnect-v1"}).encode())
+              der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
+              return f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
+          def api_get(url):
+              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {make_jwt()}", "Accept": "application/json"})
+              with urllib.request.urlopen(req, timeout=60) as resp: return json.load(resp)
+          apps = api_get("https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")
+          if not apps.get("data"): print("ERROR: no app record for com.coldtank.cards"); sys.exit(1)
+          app_id = apps["data"][0]["id"]; print(f"APP id={app_id}")
+          upload_start_iso = os.environ.get("UPLOAD_START_ISO")
+          found_new = False
+          for attempt in range(15):
+              builds = api_get(f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&sort=-uploadedDate&limit=10")
+              for b in builds.get("data", []):
+                  a = b["attributes"]; uploaded = a.get("uploadedDate")
+                  up_dt = datetime.fromisoformat(uploaded) if uploaded else None
+                  is_new = upload_start_iso and up_dt and up_dt > datetime.fromisoformat(upload_start_iso.replace("Z","+00:00"))
+                  print(f"  version={a.get('version')} build={a.get('buildNumber')} state={a.get('processingState')} new={is_new}")
+                  if is_new:
+                      found_new = True
+                      if a.get("processingState") in ("VALID","PROCESSING"): print("SUCCESS: new build confirmed"); sys.exit(0)
+              if found_new: print("WARNING: new build appeared but not VALID"); sys.exit(1)
+              time.sleep(20)
+          print("ERROR: no new build appeared"); sys.exit(1)
+          PY
+
+      - name: Auto-distribute to TestFlight testers
+        continue-on-error: true
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          UPLOAD_START_ISO: ${{ env.UPLOAD_START_ISO }}
+        run: |
+          python3 -m pip install --quiet cryptography >/dev/null 2>&1 || pip3 install --quiet cryptography >/dev/null 2>&1 || true
+          python3 - << 'PY'
+          import os, time, json, base64, sys, urllib.request, urllib.error
+          from datetime import datetime
+          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+          from cryptography.hazmat.primitives.asymmetric import ec
+          from cryptography.hazmat.primitives import hashes, serialization
+          key_id = os.environ["APPLE_API_KEY_ID"]; issuer = os.environ["APPLE_API_ISSUER_ID"]
+          key = serialization.load_pem_private_key(base64.b64decode(os.environ["APPLE_API_KEY_B64"]), password=None)
+          def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+          def make_jwt():
+              now = int(time.time())
+              h = b64url(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode())
+              p = b64url(json.dumps({"iss":issuer,"iat":now-20,"exp":now+600,"aud":"appstoreconnect-v1"}).encode())
+              der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
+              return f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
+          def api(method, url, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(url, data=data, method=method, headers={"Authorization": f"Bearer {make_jwt()}", "Accept":"application/json", "Content-Type":"application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as resp: return resp.status, json.load(resp)
+              except urllib.error.HTTPError as e:
+                  msg = e.read().decode()[:1500]
+                  try: err = json.loads(msg)
+                  except Exception: err = {"raw": msg}
+                  return e.code, err
+          apps = api("GET", "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")[1]
+          if not apps.get("data"): print("ERROR: app record not found"); sys.exit(0)
+          app_id = apps["data"][0]["id"]
+          builds = api("GET", f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&sort=-uploadedDate&limit=10")[1]
+          new_build_id = None
+          for b in builds.get("data", []):
+              a = b["attributes"]; up = a.get("uploadedDate"); up_dt = datetime.fromisoformat(up) if up else None
+              if os.environ.get("UPLOAD_START_ISO") and up_dt and up_dt > datetime.fromisoformat(os.environ["UPLOAD_START_ISO"].replace("Z","+00:00")):
+                  new_build_id = b["id"]; break
+          if not new_build_id: print("WARN: no new build id"); sys.exit(0)
+          groups = api("GET", f"https://api.appstoreconnect.apple.com/v1/betaGroups?filter[app]={app_id}&limit=50")[1]
+          for g in groups.get("data", []):
+              gid = g["id"]; gname = g["attributes"].get("name")
+              st, resp = api("POST", f"https://api.appstoreconnect.apple.com/v1/betaGroups/{gid}/relationships/builds", {"data":[{"type":"builds","id":new_build_id}]})
+              print(f"  add to '{gname}': HTTP {st}")
+          st2, resp2 = api("POST", "https://api.appstoreconnect.apple.com/v1/betaAppReviewSubmissions", {"data":{"type":"betaAppReviewSubmissions","relationships":{"build":{"data":{"type":"builds","id":new_build_id}}}}})
+          print(f"betaAppReviewSubmission: HTTP {st2}")
+          print("AUTO-DISTRIBUTE DONE (non-fatal). 403 => API Key needs App Manager/Admin role.")
+          PY
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zhika.ipa
+          path: build/export/*.ipa

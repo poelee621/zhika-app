@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>知卡 · 把内容变成知识卡片</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📚 知卡</div>
+    <div class="top-actions">
+      <span id="vipBadge" class="vip-badge hidden">PRO</span>
+      <button id="vipBtn" class="ghost-btn">会员</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 来源切换 -->
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-src="link">🔗 链接</button>
+      <button class="tab" data-src="image">📷 截图</button>
+      <button class="tab" data-src="text">✍️ 文本</button>
+    </div>
+
+    <!-- 链接模式 -->
+    <section class="panel active" data-panel="link">
+      <input id="urlInput" class="text-input" type="url" placeholder="粘贴文章 / 公众号 / 新闻 / 视频链接…" />
+      <div class="row">
+        <select id="linkType" class="select">
+          <option value="article">文章 / 新闻 / 公众号</option>
+          <option value="video">视频（文案 / 字幕）</option>
+        </select>
+        <button id="ingestBtn" class="primary-btn">提取内容</button>
+      </div>
+    </section>
+
+    <!-- 图片模式 -->
+    <section class="panel" data-panel="image">
+      <button id="pickImgBtn" class="primary-btn block">选择电子书 / 截图</button>
+      <p class="hint">支持电子书内页、文章截图、PPT 截图，自动识别文字</p>
+      <input id="fileInput" type="file" accept="image/*" hidden />
+    </section>
+
+    <!-- 文本模式 -->
+    <section class="panel" data-panel="text">
+      <textarea id="textInput" class="textarea" placeholder="直接粘贴一段文字、读书笔记、会议记录…"></textarea>
+      <button id="genTextBtn" class="primary-btn block">生成知识卡片</button>
+    </section>
+
+    <!-- 状态条 -->
+    <div id="status" class="status hidden"></div>
+
+    <!-- 卡片预览 -->
+    <section id="result" class="result hidden">
+      <div class="result-head">
+        <h2 id="resultTitle"></h2>
+        <p id="resultSummary" class="summary"></p>
+      </div>
+      <div id="cardList" class="card-list"></div>
+      <div class="row">
+        <button id="saveAllBtn" class="primary-btn">保存全部图片</button>
+        <button id="reviewAddBtn" class="ghost-btn">加入复习</button>
+      </div>
+    </section>
+
+    <!-- 复习区 -->
+    <section class="review">
+      <h3>📅 今日复习 <span id="dueCount" class="pill">0</span></h3>
+      <div id="dueList" class="due-list"></div>
+    </section>
+  </main>
+
+  <!-- 会员弹窗 -->
+  <div id="vipModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>知卡 PRO</h3>
+      <p class="modal-sub">解锁无限生成 · 全主题 · 高清出图 · 复习提醒</p>
+      <p id="priceHint" class="price"></p>
+      <button id="buyMonthly" class="primary-btn block">按月订阅</button>
+      <button id="buyYearly" class="primary-btn block alt">按年订阅（更划算）</button>
+      <button id="restoreBtn" class="ghost-btn block">恢复购买</button>
+      <button id="closeVip" class="text-btn">稍后再说</button>
+    </div>
+  </div>
+
+  <script src="cover_engine.js"></script>
+  <script src="knowledge_cards.js"></script>
+  <script src="llm.js"></script>
+  <script src="iap.js"></script>
+  <script src="ingest.js"></script>
+  <script src="spaced.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

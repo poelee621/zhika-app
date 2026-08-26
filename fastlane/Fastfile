@@ -1,0 +1,18 @@
+default_platform(:ios)
+
+platform :ios do
+  lane :submit do
+    deliver(
+      submit_for_review: true,
+      automatic_release: false,
+      force: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
+      app_identifier: "com.coldtank.cards",
+      app_version: "1.0",
+      api_key_path: "./AuthKey_TVTRXQKFKT.p8",
+      team_id: ENV["TEAM_ID"]
+    )
+  end
+end

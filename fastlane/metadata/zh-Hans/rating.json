@@ -1,0 +1,18 @@
+{
+  "cartoon_fantasy_violence": 0,
+  "realistic_violence": 0,
+  "profanity_crude_humor": 0,
+  "mature_sex_suggestive": 0,
+  "horror_fear": 0,
+  "medical_treatment": 0,
+  "alcohol_tobacco_drugs": 0,
+  "gambling": 0,
+  "sexual_content_nudity": 0,
+  "graphic_sexual_content_nudity": 0,
+  "unrestricted_web_access": 1,
+  "games_cartoon_fantasy_violence": 0,
+  "games_realistic_violence": 0,
+  "games_profanity_crude_humor": 0,
+  "kids_age_band": null,
+  "advertising": false
+}

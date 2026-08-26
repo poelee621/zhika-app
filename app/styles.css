@@ -1,0 +1,102 @@
+:root {
+  --bg: #f5f6fa;
+  --card: #ffffff;
+  --ink: #1a1a1a;
+  --sub: #8a8a8a;
+  --brand: #3b5bdb;
+  --brand-soft: #eef1ff;
+  --line: #eceef3;
+  --radius: 16px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.hidden { display: none !important; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; background: var(--card);
+  position: sticky; top: 0; z-index: 10;
+  box-shadow: 0 1px 0 var(--line);
+}
+.brand { font-size: 20px; font-weight: 800; letter-spacing: .5px; }
+.top-actions { display: flex; align-items: center; gap: 10px; }
+.vip-badge {
+  background: linear-gradient(135deg, #f6c453, #e0a020);
+  color: #5a3b00; font-size: 12px; font-weight: 800;
+  padding: 3px 9px; border-radius: 999px;
+}
+.ghost-btn, .text-btn {
+  background: transparent; border: 1px solid var(--line);
+  color: var(--ink); border-radius: 999px; padding: 7px 16px;
+  font-size: 14px; cursor: pointer;
+}
+.text-btn { border: none; color: var(--sub); }
+
+.container { max-width: 720px; margin: 0 auto; padding: 16px; }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab {
+  flex: 1; padding: 12px; border: 1px solid var(--line); background: var(--card);
+  border-radius: 12px; font-size: 15px; cursor: pointer; color: var(--sub);
+}
+.tab.active { border-color: var(--brand); color: var(--brand); font-weight: 700; background: var(--brand-soft); }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+.text-input, .textarea, .select {
+  width: 100%; padding: 14px; border: 1px solid var(--line);
+  border-radius: 12px; font-size: 15px; background: var(--card); color: var(--ink);
+  font-family: inherit;
+}
+.textarea { min-height: 160px; resize: vertical; margin-bottom: 12px; }
+.row { display: flex; gap: 10px; margin-top: 12px; align-items: center; }
+.select { flex: 1; }
+
+.primary-btn {
+  background: var(--brand); color: #fff; border: none;
+  border-radius: 12px; padding: 14px 22px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.primary-btn.block { width: 100%; margin-top: 12px; }
+.primary-btn.alt { background: #2b3fa0; }
+.primary-btn:disabled { opacity: .5; }
+
+.hint { color: var(--sub); font-size: 13px; margin: 10px 2px 0; }
+
+.status {
+  margin-top: 16px; padding: 14px; border-radius: 12px;
+  background: var(--brand-soft); color: var(--brand); font-size: 14px; text-align: center;
+}
+
+.result { margin-top: 20px; }
+.result-head h2 { margin: 0 0 4px; font-size: 20px; }
+.summary { color: var(--sub); margin: 0 0 14px; font-size: 14px; }
+
+.card-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.card-item { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
+.card-item img { width: 100%; display: block; }
+.card-item .cap { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,.5); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+
+.review { margin-top: 28px; }
+.review h3 { font-size: 17px; margin: 0 0 12px; }
+.pill { background: var(--brand); color: #fff; font-size: 12px; padding: 1px 9px; border-radius: 999px; margin-left: 6px; }
+.due-list { display: flex; flex-direction: column; gap: 10px; }
+.due-item { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; justify-content: space-between; align-items: center; }
+.due-item .meta { font-size: 13px; color: var(--sub); }
+.due-item .content { font-weight: 600; margin: 2px 0; }
+.due-item button { background: var(--brand); color: #fff; border: none; border-radius: 999px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 24px; }
+.modal-card { background: #fff; border-radius: 20px; padding: 28px 22px; width: 100%; max-width: 360px; text-align: center; }
+.modal-card h3 { margin: 0 0 6px; font-size: 22px; }
+.modal-sub { color: var(--sub); font-size: 14px; margin: 0 0 16px; }
+.price { font-size: 16px; font-weight: 700; color: var(--brand); min-height: 22px; margin: 0 0 16px; }
+.modal-card .primary-btn, .modal-card .ghost-btn { margin-top: 10px; }
+.modal-card .text-btn { margin-top: 14px; }
