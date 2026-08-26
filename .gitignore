@@ -31,3 +31,19 @@ fastlane/screenshots/.DS_Store
 # Xcode user data
 xcuserdata/
 DerivedData/
+
+# CI debug artifacts (never commit)
+_fl_log.txt
+*.log.txt
+debug_*.txt
+monitor_*.txt
+dm_log.txt
+job_log*.txt
+dbg_log.txt
+diag_log.txt
+runs.json
+jobs.json
+ios_runs.json
+new_log.txt
+p12_b64.txt
+pubkey.json

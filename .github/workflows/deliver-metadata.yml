@@ -104,6 +104,11 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY_FILEPATH: ${{ github.workspace }}/api_key.json
           TEAM_ID: ${{ secrets.TEAM_ID }}
+          # 同 ios-build：tty-screen 0.8.2 在 CI 无 TTY 下会无限递归崩溃
+          COLUMNS: "80"
+          LINES: "24"
+          TERM: "dumb"
+          CI: "true"
         run: |
           echo "=== 仅上传 metadata + 图标到 App Store Connect（不提交审核）==="
           fastlane upload_metadata

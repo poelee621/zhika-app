@@ -262,6 +262,12 @@ jobs:
       - name: Upload IPA to TestFlight (fastlane pilot)
         env:
           TEAM_ID: ${{ secrets.TEAM_ID }}
+          # tty-screen 0.8.2 在 CI 无 TTY 下 size_from_ioctl 会无限递归崩溃，
+          # 设 COLUMNS/LINES 让 tty-screen 直接读环境变量、跳过 ioctl 坏路径
+          COLUMNS: "80"
+          LINES: "24"
+          TERM: "dumb"
+          CI: "true"
         run: |
           fastlane upload_to_testflight
 
