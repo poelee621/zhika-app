@@ -334,25 +334,38 @@ jobs:
               p = b64url(json.dumps({"iss":issuer,"iat":now-20,"exp":now+600,"aud":"appstoreconnect-v1"}).encode())
               der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
               return f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
-          def api_get(url):
-              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {make_jwt()}", "Accept": "application/json"})
-              with urllib.request.urlopen(req, timeout=60) as resp: return json.load(resp)
-          apps = api_get("https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")
-          if not apps.get("data"): print("ERROR: no app record for com.coldtank.cards"); sys.exit(1)
-          app_id = apps["data"][0]["id"]; print(f"APP id={app_id}")
+          def api(method, url, body=None):
+              data = json.dumps(body).encode() if body else None
+              req = urllib.request.Request(url, data=data, method=method, headers={"Authorization": f"Bearer {make_jwt()}", "Accept": "application/json", "Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp: return resp.status, json.load(resp)
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode(errors='replace')[:500]
+                  print(f"  HTTP {e.code} {method} {url.split('?')[0]}: {body}")
+                  return e.code, None
+          apps = api("GET", "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")
+          if not apps[1].get("data"): print("ERROR: no app record for com.coldtank.cards"); sys.exit(1)
+          app_id = apps[1]["data"][0]["id"]; print(f"APP id={app_id}")
+          # 🔍 调试：先看当前已存在的 app store versions
+          print("--- existing app store versions ---")
+          st, vs = api("GET", f"https://api.appstoreconnect.apple.com/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=10")
+          print(f"  http={st} data_len={len((vs or {}).get('data', []))}")
+          for v in (vs or {}).get("data", []):
+              print(f"  - version={v['attributes'].get('version')} state={v['attributes'].get('appStoreState')}")
           upload_start_iso = os.environ.get("UPLOAD_START_ISO")
           found_new = False
           for attempt in range(60):
-              builds = api_get(f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&sort=-uploadedDate&limit=10")
+              builds = api("GET", f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&sort=-uploadedDate&limit=10")[1] or {}
               for b in builds.get("data", []):
                   a = b["attributes"]; uploaded = a.get("uploadedDate")
                   up_dt = datetime.fromisoformat(uploaded) if uploaded else None
                   is_new = upload_start_iso and up_dt and up_dt > datetime.fromisoformat(upload_start_iso.replace("Z","+00:00"))
-                  print(f"  version={a.get('version')} build={a.get('buildNumber')} state={a.get('processingState')} new={is_new}")
+                  print(f"  build version={a.get('version')} build={a.get('buildNumber')} state={a.get('processingState')} new={is_new}")
                   if is_new:
                       found_new = True
                       if a.get("processingState") in ("VALID","PROCESSING"): print("SUCCESS: new build confirmed"); sys.exit(0)
               if found_new: print("WARNING: new build appeared but not VALID"); sys.exit(1)
+              if attempt == 0: print("  [debug] empty data — Apple may still be processing. Will keep polling.")
               time.sleep(20)
           print("ERROR: no new build appeared"); sys.exit(1)
           PY
