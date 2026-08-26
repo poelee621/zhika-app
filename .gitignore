@@ -18,6 +18,8 @@ npm-debug.log*
 *.mobileprovision.b64
 *.p12
 *.p8
+*.pem
+api_key.json
 .env
 .env.local
 

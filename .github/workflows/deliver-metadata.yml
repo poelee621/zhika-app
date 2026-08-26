@@ -26,13 +26,26 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
           xcodebuild -version
 
-      - name: Decode App Store Connect API Key (.p8)
+      - name: Decode App Store Connect API Key (.p8) + 生成 fastlane 用的 JSON 密钥
         env:
           APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
           echo "APPLE_API_KEY_B64 length: ${#APPLE_API_KEY_B64}"
           echo "$APPLE_API_KEY_B64" | base64 --decode > AuthKey_TVTRXQKFKT.p8
           echo "decoded p8 bytes: $(stat -f%z AuthKey_TVTRXQKFKT.p8 2>/dev/null || stat -c%s AuthKey_TVTRXQKFKT.p8 2>/dev/null)"
+          # fastlane 的 api_key_path / APP_STORE_CONNECT_API_KEY_KEY_FILEPATH 必须是 JSON 格式，不是裸 .p8
+          python3 - << 'PY'
+          import os, json
+          key_id = os.environ['APPLE_API_KEY_ID']
+          issuer_id = os.environ['APPLE_API_ISSUER_ID']
+          with open('AuthKey_TVTRXQKFKT.p8') as f:
+              pem = f.read()
+          with open('api_key.json', 'w') as f:
+              json.dump({"key_id": key_id, "issuer_id": issuer_id, "key": pem}, f)
+          print("api_key.json written, pem bytes:", len(pem))
+          PY
 
       - name: Install fastlane
         run: sudo gem install fastlane -N
@@ -41,7 +54,7 @@ jobs:
         env:
           APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_KEY_FILEPATH: ${{ github.workspace }}/AuthKey_TVTRXQKFKT.p8
+          APP_STORE_CONNECT_API_KEY_KEY_FILEPATH: ${{ github.workspace }}/api_key.json
           TEAM_ID: ${{ secrets.TEAM_ID }}
         run: |
           echo "=== 仅上传 metadata + 图标到 App Store Connect（不提交审核）==="
