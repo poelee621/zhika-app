@@ -32,4 +32,17 @@ platform :ios do
       team_id: ENV["TEAM_ID"]
     )
   end
+
+  # 上传 IPA 到 TestFlight（pilot，走验证过的路径，自动等待 build 处理完成并分发）
+  lane :upload_to_testflight do
+    upload_to_testflight(
+      ipa: "build/export/App.ipa",
+      api_key_path: "./api_key.json",
+      team_id: ENV["TEAM_ID"],
+      skip_waiting_for_build_processing: false,
+      wait_for_uploaded_build: true,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+  end
 end

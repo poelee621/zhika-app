@@ -238,191 +238,32 @@ jobs:
           EXPECTED=${{ github.run_number }}
           if [ "$ACTUAL" != "$EXPECTED" ]; then echo "ERROR: CFBundleVersion mismatch"; exit 1; fi
 
-      - name: Upload IPA to TestFlight (App Store Connect API)
+      - name: Decode App Store Connect API Key (fastlane JSON)
         env:
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
         run: |
-          echo "UPLOAD_START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-          python3 -m pip install --quiet cryptography >/dev/null 2>&1 || pip3 install --quiet cryptography >/dev/null 2>&1 || true
+          echo "$APPLE_API_KEY_B64" | base64 --decode > AuthKey_TVTRXQKFKT.p8
           python3 - << 'PY'
-          import os, base64, time, json, sys, subprocess, urllib.request, urllib.error, hashlib
-          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-          from cryptography.hazmat.primitives.asymmetric import ec
-          from cryptography.hazmat.primitives import hashes, serialization
-          key_id = os.environ["APPLE_API_KEY_ID"]; issuer = os.environ["APPLE_API_ISSUER_ID"]
-          key = serialization.load_pem_private_key(base64.b64decode(os.environ["APPLE_API_KEY_B64"]), password=None)
-          def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
-          now = int(time.time())
-          h = b64url(json.dumps({"alg": "ES256", "kid": key_id, "typ": "JWT"}).encode())
-          p = b64url(json.dumps({"iss": issuer, "iat": now - 20, "exp": now + 1200, "aud": "appstoreconnect-v1"}).encode())
-          der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
-          jwt = f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
-          def api(method, url, body=None, extra=None):
-              data = json.dumps(body).encode() if body is not None else None
-              hd = {"Authorization": f"Bearer {jwt}", "Accept": "application/json", "Content-Type": "application/json"}
-              if extra: hd.update(extra)
-              req = urllib.request.Request(url, data=data, method=method, headers=hd)
-              try:
-                  with urllib.request.urlopen(req, timeout=120) as resp: return resp.status, json.load(resp)
-              except urllib.error.HTTPError as e:
-                  print(f"HTTPError {e.code} on {method} {url}"); print(e.read().decode()[:1500]); sys.exit(1)
-          ipa = subprocess.run("ls build/export/*.ipa | head -1", shell=True, capture_output=True, text=True).stdout.strip()
-          if not ipa: print("ERROR: no IPA found"); sys.exit(1)
-          size = os.path.getsize(ipa)
-          unzip = subprocess.run(f"unzip -p '{ipa}' 'Payload/*.app/Info.plist'", shell=True, capture_output=True).stdout or \
-              subprocess.run(f"unzip -p '{ipa}' 'Payload/App.app/Info.plist'", shell=True, capture_output=True).stdout
-          with open("/tmp/ipa_info.plist", "wb") as f: f.write(unzip)
-          ver = subprocess.run(["plutil", "-extract", "CFBundleShortVersionString", "raw", "/tmp/ipa_info.plist"], capture_output=True, text=True).stdout.strip()
-          bno = subprocess.run(["plutil", "-extract", "CFBundleVersion", "raw", "/tmp/ipa_info.plist"], capture_output=True, text=True).stdout.strip()
-          print(f"IPA={ipa} version={ver} build={bno}")
-          apps = api("GET", "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")[1]
-          if not apps.get("data"): print("ERROR: app record not found for com.coldtank.cards"); sys.exit(1)
-          app_id = apps["data"][0]["id"]; print(f"app_id={app_id}")
-          st, bu = api("POST", "https://api.appstoreconnect.apple.com/v1/buildUploads", {
-              "data": {"type": "buildUploads", "attributes": {"cfBundleShortVersionString": ver, "cfBundleVersion": bno, "platform": "IOS"},
-                       "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}}})
-          bu_id = bu["data"]["id"]; print(f"buildUpload created: {bu_id}")
-          st2, buf = api("POST", "https://api.appstoreconnect.apple.com/v1/buildUploadFiles", {
-              "data": {"type": "buildUploadFiles", "attributes": {"fileName": os.path.basename(ipa), "fileSize": size, "assetType": "ASSET", "uti": "com.apple.ipa"},
-                       "relationships": {"buildUpload": {"data": {"type": "buildUploads", "id": bu_id}}}}})
-          file_id = buf["data"]["id"]; ops = buf["data"]["attributes"]["uploadOperations"]
-          print(f"buildUploadFile created ({st2}), {len(ops)} ops")
-          with open(ipa, "rb") as f: data = f.read()
-          for i, op in enumerate(ops):
-              o = op["offset"]; l = op["length"]; url = op["url"]; chunk = data[o:o+l]
-              hd = dict(op.get("headers", {})); hd.pop("Content-Length", None)
-              req = urllib.request.Request(url, data=chunk, method="PUT", headers=hd)
-              try:
-                  with urllib.request.urlopen(req, timeout=600) as resp: print(f"  PUT part {i+1}/{len(ops)} -> {resp.status}")
-              except urllib.error.HTTPError as e:
-                  print(f"  PUT FAILED part {i+1}: {e.code} {e.read().decode()[:500]}"); sys.exit(1)
-          st4, resp4 = api("PATCH", f"https://api.appstoreconnect.apple.com/v1/buildUploadFiles/{file_id}", {"data": {"type": "buildUploadFiles", "id": file_id, "attributes": {"uploaded": True}}})
-          print(f"commit -> status={st4} state={resp4.get('data',{}).get('attributes',{}).get('state','?')}")
-          for attempt in range(30):
-              time.sleep(20)
-              _, r = api("GET", f"https://api.appstoreconnect.apple.com/v1/buildUploadFiles/{file_id}")
-              attrs = r.get("data", {}).get("attributes", {})
-              state = attrs.get("state")
-              ads = attrs.get("assetDeliveryState") or {}
-              print(f"  poll {attempt+1}: state={state} assetDeliveryState={ads.get('state')} errors={ads.get('errors')}")
-              if state == "FAILED" or ads.get("state") == "FAILED": print("ERROR: FAILED"); sys.exit(1)
-              if state == "COMPLETE" or ads.get("state") == "COMPLETE": print("UPLOAD ASSET DELIVERY COMPLETE"); break
+          import os, json
+          key_id = os.environ['APPLE_API_KEY_ID']
+          issuer_id = os.environ['APPLE_API_ISSUER_ID']
+          with open('AuthKey_TVTRXQKFKT.p8') as f:
+              pem = f.read()
+          with open('api_key.json', 'w') as f:
+              json.dump({"key_id": key_id, "issuer_id": issuer_id, "key": pem}, f)
+          print("api_key.json written")
           PY
 
-      - name: Verify builds on Apple server (ground truth)
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
-          UPLOAD_START_ISO: ${{ env.UPLOAD_START_ISO }}
-        run: |
-          python3 -m pip install --quiet cryptography >/dev/null 2>&1 || pip3 install --quiet cryptography >/dev/null 2>&1 || true
-          python3 - << 'PY'
-          import os, time, json, base64, sys, urllib.request, urllib.error
-          from datetime import datetime
-          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-          from cryptography.hazmat.primitives.asymmetric import ec
-          from cryptography.hazmat.primitives import hashes, serialization
-          key_id = os.environ["APPLE_API_KEY_ID"]; issuer = os.environ["APPLE_API_ISSUER_ID"]
-          key = serialization.load_pem_private_key(base64.b64decode(os.environ["APPLE_API_KEY_B64"]), password=None)
-          def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
-          def make_jwt():
-              now = int(time.time())
-              h = b64url(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode())
-              p = b64url(json.dumps({"iss":issuer,"iat":now-20,"exp":now+600,"aud":"appstoreconnect-v1"}).encode())
-              der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
-              return f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
-          def api(method, url, body=None):
-              data = json.dumps(body).encode() if body else None
-              req = urllib.request.Request(url, data=data, method=method, headers={"Authorization": f"Bearer {make_jwt()}", "Accept": "application/json", "Content-Type": "application/json"})
-              try:
-                  with urllib.request.urlopen(req, timeout=60) as resp: return resp.status, json.load(resp)
-              except urllib.error.HTTPError as e:
-                  body = e.read().decode(errors='replace')[:500]
-                  print(f"  HTTP {e.code} {method} {url.split('?')[0]}: {body}")
-                  return e.code, None
-          apps = api("GET", "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")
-          if not apps[1].get("data"): print("ERROR: no app record for com.coldtank.cards"); sys.exit(1)
-          app_id = apps[1]["data"][0]["id"]; print(f"APP id={app_id}")
-          # 🔍 调试：先看当前已存在的 app store versions
-          print("--- existing app store versions ---")
-          st, vs = api("GET", f"https://api.appstoreconnect.apple.com/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=10")
-          print(f"  http={st} data_len={len((vs or {}).get('data', []))}")
-          for v in (vs or {}).get("data", []):
-              print(f"  - version={v['attributes'].get('version')} state={v['attributes'].get('appStoreState')}")
-          upload_start_iso = os.environ.get("UPLOAD_START_ISO")
-          found_new = False
-          for attempt in range(60):
-              builds = api("GET", f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&sort=-uploadedDate&limit=10")[1] or {}
-              for b in builds.get("data", []):
-                  a = b["attributes"]; uploaded = a.get("uploadedDate")
-                  up_dt = datetime.fromisoformat(uploaded) if uploaded else None
-                  is_new = upload_start_iso and up_dt and up_dt > datetime.fromisoformat(upload_start_iso.replace("Z","+00:00"))
-                  print(f"  build version={a.get('version')} build={a.get('buildNumber')} state={a.get('processingState')} new={is_new}")
-                  if is_new:
-                      found_new = True
-                      if a.get("processingState") in ("VALID","PROCESSING"): print("SUCCESS: new build confirmed"); sys.exit(0)
-              if found_new: print("WARNING: new build appeared but not VALID"); sys.exit(1)
-              if attempt == 0: print("  [debug] empty data — Apple may still be processing. Will keep polling.")
-              time.sleep(20)
-          print("ERROR: no new build appeared"); sys.exit(1)
-          PY
+      - name: Install fastlane
+        run: sudo gem install fastlane -N
 
-      - name: Auto-distribute to TestFlight testers
-        continue-on-error: true
+      - name: Upload IPA to TestFlight (fastlane pilot)
         env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
-          UPLOAD_START_ISO: ${{ env.UPLOAD_START_ISO }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
         run: |
-          python3 -m pip install --quiet cryptography >/dev/null 2>&1 || pip3 install --quiet cryptography >/dev/null 2>&1 || true
-          python3 - << 'PY'
-          import os, time, json, base64, sys, urllib.request, urllib.error
-          from datetime import datetime
-          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-          from cryptography.hazmat.primitives.asymmetric import ec
-          from cryptography.hazmat.primitives import hashes, serialization
-          key_id = os.environ["APPLE_API_KEY_ID"]; issuer = os.environ["APPLE_API_ISSUER_ID"]
-          key = serialization.load_pem_private_key(base64.b64decode(os.environ["APPLE_API_KEY_B64"]), password=None)
-          def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
-          def make_jwt():
-              now = int(time.time())
-              h = b64url(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode())
-              p = b64url(json.dumps({"iss":issuer,"iat":now-20,"exp":now+600,"aud":"appstoreconnect-v1"}).encode())
-              der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
-              return f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
-          def api(method, url, body=None):
-              data = json.dumps(body).encode() if body is not None else None
-              req = urllib.request.Request(url, data=data, method=method, headers={"Authorization": f"Bearer {make_jwt()}", "Accept":"application/json", "Content-Type":"application/json"})
-              try:
-                  with urllib.request.urlopen(req, timeout=120) as resp: return resp.status, json.load(resp)
-              except urllib.error.HTTPError as e:
-                  msg = e.read().decode()[:1500]
-                  try: err = json.loads(msg)
-                  except Exception: err = {"raw": msg}
-                  return e.code, err
-          apps = api("GET", "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")[1]
-          if not apps.get("data"): print("ERROR: app record not found"); sys.exit(0)
-          app_id = apps["data"][0]["id"]
-          builds = api("GET", f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&sort=-uploadedDate&limit=10")[1]
-          new_build_id = None
-          for b in builds.get("data", []):
-              a = b["attributes"]; up = a.get("uploadedDate"); up_dt = datetime.fromisoformat(up) if up else None
-              if os.environ.get("UPLOAD_START_ISO") and up_dt and up_dt > datetime.fromisoformat(os.environ["UPLOAD_START_ISO"].replace("Z","+00:00")):
-                  new_build_id = b["id"]; break
-          if not new_build_id: print("WARN: no new build id"); sys.exit(0)
-          groups = api("GET", f"https://api.appstoreconnect.apple.com/v1/betaGroups?filter[app]={app_id}&limit=50")[1]
-          for g in groups.get("data", []):
-              gid = g["id"]; gname = g["attributes"].get("name")
-              st, resp = api("POST", f"https://api.appstoreconnect.apple.com/v1/betaGroups/{gid}/relationships/builds", {"data":[{"type":"builds","id":new_build_id}]})
-              print(f"  add to '{gname}': HTTP {st}")
-          st2, resp2 = api("POST", "https://api.appstoreconnect.apple.com/v1/betaAppReviewSubmissions", {"data":{"type":"betaAppReviewSubmissions","relationships":{"build":{"data":{"type":"builds","id":new_build_id}}}}})
-          print(f"betaAppReviewSubmission: HTTP {st2}")
-          print("AUTO-DISTRIBUTE DONE (non-fatal). 403 => API Key needs App Manager/Admin role.")
-          PY
+          fastlane upload_to_testflight
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
