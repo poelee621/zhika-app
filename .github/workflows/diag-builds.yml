@@ -1,0 +1,57 @@
+name: diag-builds
+on:
+  workflow_dispatch:
+jobs:
+  diag:
+    runs-on: macos-15
+    steps:
+      - name: Diagnose Apple builds / buildUploads
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+        run: |
+          python3 -m pip install --quiet cryptography >/dev/null 2>&1 || true
+          python3 - << 'PY'
+          import os, time, json, base64, sys, urllib.request, urllib.error
+          from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+          from cryptography.hazmat.primitives.asymmetric import ec
+          from cryptography.hazmat.primitives import hashes, serialization
+          key_id = os.environ["APPLE_API_KEY_ID"]; issuer = os.environ["APPLE_API_ISSUER_ID"]
+          key = serialization.load_pem_private_key(base64.b64decode(os.environ["APPLE_API_KEY_B64"]), password=None)
+          def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+          def make_jwt():
+              now = int(time.time())
+              h = b64url(json.dumps({"alg":"ES256","kid":key_id,"typ":"JWT"}).encode())
+              p = b64url(json.dumps({"iss":issuer,"iat":now-20,"exp":now+600,"aud":"appstoreconnect-v1"}).encode())
+              der = key.sign(f"{h}.{p}".encode(), ec.ECDSA(hashes.SHA256())); r, s = decode_dss_signature(der)
+              return f"{h}.{p}.{b64url(r.to_bytes(32,'big')+s.to_bytes(32,'big'))}"
+          def api(method, url):
+              req = urllib.request.Request(url, method=method, headers={"Authorization": f"Bearer {make_jwt()}", "Accept": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      return resp.status, json.load(resp)
+              except urllib.error.HTTPError as e:
+                  print(f"  HTTP {e.code} {method} {url.split('?')[0]}: {e.read().decode(errors='replace')[:800]}")
+                  return e.code, None
+          apps = api("GET", "https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.coldtank.cards")[1]
+          if not apps.get("data"): print("NO APP"); sys.exit(0)
+          app_id = apps["data"][0]["id"]; print("APP id=", app_id)
+          print("=== GET /v1/builds?filter[app]=app_id (no extra filter) ===")
+          st, b = api("GET", f"https://api.appstoreconnect.apple.com/v1/builds?filter[app]={app_id}&limit=20")
+          print("  http=", st, "count=", len((b or {}).get("data", [])))
+          for x in (b or {}).get("data", []):
+              a = x["attributes"]; print("   build", a.get("version"), a.get("buildNumber"), a.get("processingState"), "uploaded=", a.get("uploadedDate"))
+          print("=== GET /v1/buildUploads?filter[app]=app_id ===")
+          st2, bu = api("GET", f"https://api.appstoreconnect.apple.com/v1/buildUploads?filter[app]={app_id}&sort=-createdDate&limit=10")
+          print("  http=", st2, "count=", len((bu or {}).get("data", [])))
+          for x in (bu or {}).get("data", []):
+              rel = x.get("relationships", {})
+              bl = rel.get("build", {}).get("data")
+              a = x["attributes"]
+              print("   buildUpload", x["id"], "ver=", a.get("cfBundleShortVersionString"), "bno=", a.get("cfBundleVersion"), "build_rel=", bl)
+          print("=== existing app store versions ===")
+          st3, vs = api("GET", f"https://api.appstoreconnect.apple.com/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=10")
+          for v in (vs or {}).get("data", []):
+              print("   version", v["attributes"].get("version"), v["attributes"].get("appStoreState"), "id=", v["id"])
+          PY
