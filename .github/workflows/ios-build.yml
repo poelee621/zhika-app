@@ -2,6 +2,14 @@ name: iOS Build & Upload to TestFlight
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'ios/**'
+      - 'app/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.*'
+      - 'fastlane/**'
+      - '.github/workflows/ios-build.yml'
   workflow_dispatch:
 
 jobs:
