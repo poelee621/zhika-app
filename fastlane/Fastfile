@@ -15,4 +15,21 @@ platform :ios do
       team_id: ENV["TEAM_ID"]
     )
   end
+
+  # 仅上传 metadata + 图标到 App Store Connect 后台，不提交审核、不上传二进制
+  lane :upload_metadata do
+    deliver(
+      skip_binary_upload: true,
+      submit_for_review: false,
+      automatic_release: false,
+      force: true,
+      skip_metadata: false,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
+      app_identifier: "com.coldtank.cards",
+      app_version: "1.0",
+      api_key_path: "./AuthKey_TVTRXQKFKT.p8",
+      team_id: ENV["TEAM_ID"]
+    )
+  end
 end

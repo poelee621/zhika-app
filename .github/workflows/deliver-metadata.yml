@@ -1,0 +1,49 @@
+name: Upload Metadata & Icon（仅上传，不提交审核）
+
+# 手动触发：在 GitHub 仓库 Actions 页点 "Run workflow"
+# 作用：把 fastlane/metadata 下的名称/描述/截图/App 图标 上传到 App Store Connect 后台
+#       （不提交审核、不上传 .ipa，可独立于出包流程提前让后台显示新图标）
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: '备注（可选，仅记录用）'
+        required: false
+        default: ''
+
+jobs:
+  upload:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Decode App Store Connect API Key (.p8)
+        env:
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+        run: |
+          echo "APPLE_API_KEY_B64 length: ${#APPLE_API_KEY_B64}"
+          echo "$APPLE_API_KEY_B64" | base64 --decode > AuthKey_TVTRXQKFKT.p8
+          echo "decoded p8 bytes: $(stat -f%z AuthKey_TVTRXQKFKT.p8 2>/dev/null || stat -c%s AuthKey_TVTRXQKFKT.p8 2>/dev/null)"
+
+      - name: Install fastlane
+        run: sudo gem install fastlane -N
+
+      - name: fastlane deliver (skip binary upload, no submit)
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY_FILEPATH: ${{ github.workspace }}/AuthKey_TVTRXQKFKT.p8
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          echo "=== 仅上传 metadata + 图标到 App Store Connect（不提交审核）==="
+          fastlane upload_metadata
+          echo "=== 上传完成（若上方无 ERROR 即已写入后台）==="
