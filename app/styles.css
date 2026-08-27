@@ -83,6 +83,7 @@ body {
 .card-item { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
 .card-item img { width: 100%; display: block; }
 .card-item .cap { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,.5); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+#status .muted { color: #6b7280; font-size: 12px; line-height: 1.5; }
 
 .theme-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0 4px; }
 .theme-label { font-size: 13px; color: var(--sub); }

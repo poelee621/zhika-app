@@ -47,10 +47,26 @@ function htmlToText(s) {
 function pick(html, re, fallback) { const m = html.match(re); return m ? m[1].trim() : (fallback || ''); }
 
 // 文章/新闻/公众号
+// 失败不抛，统一返 {title,text,ok,status,kind,message}，让前端能按场景给用户针对性提示
+//   ok=true  抓成功（text 可能为空：网站无正文或 JS 渲染）
+//   kind:    'http_error' | 'timeout' | 'dns' | 'parse' | 'empty'
 async function fetchArticle(url) {
-  const resp = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'text/html' } });
-  if (!resp.ok) throw new Error('抓取失败 ' + resp.status);
-  const html = await resp.text();
+  let resp;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000); // 20s 硬超时，避免 worker 卡 30s
+    resp = await fetch(url, { headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8' }, signal: ctrl.signal });
+    clearTimeout(t);
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    if (e && e.name === 'AbortError') return { title: '', text: '', ok: false, status: 0, kind: 'timeout', message: '抓取超时（20s）' };
+    if (/DNS|ENOTFOUND|getaddrinfo/i.test(msg)) return { title: '', text: '', ok: false, status: 0, kind: 'dns', message: '域名解析失败' };
+    return { title: '', text: '', ok: false, status: 0, kind: 'http_error', message: '网络错误: ' + msg };
+  }
+  if (!resp.ok) return { title: '', text: '', ok: false, status: resp.status, kind: 'http_error', message: `目标站点返回 ${resp.status}` };
+  let html;
+  try { html = await resp.text(); }
+  catch (e) { return { title: '', text: '', ok: false, status: resp.status, kind: 'parse', message: '读取响应失败' }; }
   const title = pick(html, /<title>([\s\S]*?)<\/title>/i)
     || pick(html, /property="og:title"\s+content="([^"]+)"/i);
   // 微信公众平台：取 js_content 区块
@@ -59,7 +75,8 @@ async function fetchArticle(url) {
   if (wx) block = wx[1];
   let text = htmlToText(block).slice(0, 8000);
   if (text.length < 100) text = htmlToText(html).slice(0, 8000); // 兜底：整页
-  return { title, text };
+  if (text.length < 50) return { title, text, ok: false, status: resp.status, kind: 'empty', message: '网页抓取到但无可读正文（可能需登录或 JS 渲染）' };
+  return { title, text, ok: true };
 }
 
 // 视频文案/元信息（发布文案 + 描述；B站字幕需 wbi 签名，进阶预留）
@@ -126,13 +143,15 @@ export default {
         const { url: u } = await request.json();
         if (!u) return json({ error: 'missing url' }, 400, cors);
         const r = await fetchArticle(u);
-        return json(r, 200, cors);
+        // 失败透传真实 status：前端可按 404/403/timeout 等分别给提示
+        if (!r.ok) return json({ error: r.message, kind: r.kind, status: r.status }, r.status || 502, cors);
+        return json({ title: r.title, text: r.text }, 200, cors);
       }
       if (request.method === 'POST' && path === '/transcribe') {
         const { url: u } = await request.json();
         if (!u) return json({ error: 'missing url' }, 400, cors);
         const r = await fetchVideo(u);
-        return json(r, 200, cors);
+        return json({ title: r.title, text: r.text }, 200, cors);
       }
       if (request.method === 'POST' && path === '/ocr') {
         const { image } = await request.json();

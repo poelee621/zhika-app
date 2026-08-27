@@ -23,8 +23,15 @@
 
   function setStatus(msg, show) {
     const el = $('#status');
-    if (!show) { el.classList.add('hidden'); return; }
-    el.textContent = msg; el.classList.remove('hidden');
+    if (!show) { el.classList.add('hidden'); el.textContent = ''; return; }
+    // 支持富文本：{ title, body } 两行，title 加粗（用于错误提示）
+    if (msg && typeof msg === 'object') {
+      const safe = (s) => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      el.innerHTML = `<b>${safe(msg.title)}</b>${msg.body ? `<br/><span class="muted">${safe(msg.body)}</span>` : ''}`;
+    } else {
+      el.textContent = msg;
+    }
+    el.classList.remove('hidden');
   }
 
   function refreshVip() {
@@ -206,12 +213,16 @@
     try {
       const r = type === 'video' ? await INGEST.transcribe(url) : await INGEST.extract(url);
       const text = (r && r.text) || '';
-      if (!text.trim()) throw new Error('未提取到内容，请改用文本模式手动粘贴');
+      if (!text.trim()) {
+        // 防御：Worker 未识别为空，但 body 仍空
+        const e = new Error('未抓到到正文'); e.kind = 'empty'; e.status = 0;
+        throw e;
+      }
       setStatus('提取成功，正在生成卡片…', true);
       await produceCards(text, r.title || url);
     } catch (e) {
-      console.error(e);
-      setStatus('提取失败：' + (e.message || e) + '（可改用「文本」模式手动粘贴）', true);
+      console.error('[ingest]', e);
+      setStatus(INGEST.explainError(e), true);
     }
   });
 
@@ -223,12 +234,15 @@
       setStatus('正在识别图中文字（OCR）…', true);
       const r = await INGEST.ocr(b64);
       const text = (r && r.text) || '';
-      if (!text.trim()) throw new Error('未识别到文字');
+      if (!text.trim()) {
+        const e = new Error('未识别到文字'); e.kind = 'empty'; e.status = 0;
+        throw e;
+      }
       setStatus('识别成功，正在生成卡片…', true);
       await produceCards(text, '图片OCR');
     } catch (e) {
-      console.error(e);
-      setStatus('识别失败：' + (e.message || e) + '（可改用「文本」模式手动粘贴）', true);
+      console.error('[ocr]', e);
+      setStatus(INGEST.explainError(e), true);
     }
   });
 
