@@ -76,8 +76,8 @@
         </div>
         <div id="themeBar" class="theme-bar hidden"></div>
         <div id="cardList" class="card-list"></div>
+        <p class="hint">👆 点击卡片可全屏查看 · 长按保存到相册 · 或分享 / 发布</p>
         <div class="row">
-          <button id="saveAllBtn" class="primary-btn">保存全部图片</button>
           <button id="copyBtn" class="ghost-btn">复制文案</button>
           <button id="reviewAddBtn" class="ghost-btn">加入复习</button>
           <button id="publishBtn" class="primary-btn alt">发布到社区</button>
@@ -101,6 +101,23 @@
     <button class="tabbar-btn" data-view="create">✨<span>创作</span></button>
     <button class="tabbar-btn" data-view="mine">👤<span>我的</span></button>
   </nav>
+
+  <!-- ============ 全屏图片预览 ============ -->
+  <div id="previewModal" class="modal hidden">
+    <div class="preview-stage" id="previewStage">
+      <button id="closePreview" class="preview-close">✕</button>
+      <button id="prevImg" class="preview-nav left">‹</button>
+      <img id="previewImg" class="preview-img" src="" alt="preview" />
+      <button id="nextImg" class="preview-nav right">›</button>
+      <div class="preview-hint">长按图片可保存到相册</div>
+      <div class="preview-actions">
+        <button id="pvSave" class="preview-btn">💾 保存</button>
+        <button id="pvShare" class="preview-btn">↗ 分享</button>
+        <button id="pvPublish" class="preview-btn primary">📤 发布社区</button>
+      </div>
+      <div class="preview-count" id="previewCount">1/6</div>
+    </div>
+  </div>
 
   <!-- ============ 卡片详情弹窗 ============ -->
   <div id="detailModal" class="modal hidden">

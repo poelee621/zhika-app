@@ -104,7 +104,7 @@
     renderThemeBar();
   }
 
-  // 把 DataURL 列表画进卡片网格（封面 + 各卡）
+  // 把 DataURL 列表画进卡片网格（封面 + 各卡），点击单图 → 全屏预览
   function paintCards(list, urls, set) {
     list.innerHTML = '';
     urls.forEach((u, i) => {
@@ -112,9 +112,89 @@
       const item = document.createElement('div');
       item.className = 'card-item';
       item.innerHTML = `<img src="${u}" alt="card"/><span class="cap">${label}</span>`;
+      item.addEventListener('click', () => openPreview(urls, i));
       list.appendChild(item);
     });
   }
+
+  // ===== 全屏图片预览：长按保存 / 分享社媒 / 发布社区 =====
+  let previewUrls = [], previewIdx = 0;
+  function openPreview(urls, idx) {
+    previewUrls = urls; previewIdx = idx;
+    renderPreview();
+    $('#previewModal').classList.remove('hidden');
+  }
+  function renderPreview() {
+    $('#previewImg').src = previewUrls[previewIdx];
+    $('#previewCount').textContent = (previewIdx + 1) + ' / ' + previewUrls.length;
+    const multi = previewUrls.length > 1;
+    $('#prevImg').classList.toggle('hidden', previewIdx === 0 || !multi);
+    $('#nextImg').classList.toggle('hidden', previewIdx >= previewUrls.length - 1 || !multi);
+  }
+  function closePreview() { $('#previewModal').classList.add('hidden'); }
+  function stepPreview(delta) {
+    const n = previewUrls.length; if (!n) return;
+    previewIdx = (previewIdx + delta + n) % n;
+    renderPreview();
+  }
+  $('#closePreview').addEventListener('click', closePreview);
+  $('#previewModal').addEventListener('click', (ev) => { if (ev.target.id === 'previewModal') closePreview(); });
+  $('#prevImg').addEventListener('click', () => stepPreview(-1));
+  $('#nextImg').addEventListener('click', () => stepPreview(1));
+  // 左右滑动切换
+  let touchX = null;
+  $('#previewStage').addEventListener('touchstart', (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+  $('#previewStage').addEventListener('touchend', (e) => {
+    if (touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 50) stepPreview(dx < 0 ? 1 : -1);
+    touchX = null;
+  }, { passive: true });
+
+  // 保存单张（触发下载；iOS 提示长按保存到相册）
+  $('#pvSave').addEventListener('click', () => {
+    const u = previewUrls[previewIdx]; if (!u) return;
+    const a = document.createElement('a');
+    a.href = u; a.download = '知卡_' + (previewIdx + 1) + '.jpg';
+    document.body.appendChild(a); a.click(); a.remove();
+    setStatus('已触发保存（iOS 也可长按图片直接存相册）', true);
+    setTimeout(() => setStatus('', false), 2500);
+  });
+
+  // 分享单张到其他社媒（Web Share API，含图片文件）
+  $('#pvShare').addEventListener('click', async () => {
+    const u = previewUrls[previewIdx]; if (!u) return;
+    try {
+      if (navigator.share && !isWeb()) {
+        // iOS 原生分享（可带图片文件 → 微信/相册等）
+        const blob = await (await fetch(u)).blob();
+        const file = new File([blob], '知卡_' + (previewIdx + 1) + '.jpg', { type: 'image/jpeg' });
+        await navigator.share({ title: '知卡知识卡片', files: [file] });
+      } else if (navigator.share) {
+        // Web：分享链接/文案
+        await navigator.share({ title: '知卡知识卡片', text: lastSet ? lastSet.title || '知卡知识卡片' : '知卡知识卡片' });
+      } else {
+        throw new Error('unsupported');
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // 用户取消
+      // 降级：复制当前图片 dataURL 到剪贴板不可行（太大），提示长按保存
+      setStatus('当前浏览器不支持一键分享，可长按图片保存后手动分享', true);
+      setTimeout(() => setStatus('', false), 2500);
+    }
+  });
+
+  // 发布当前图片到知卡社区（单张发布）
+  $('#pvPublish').addEventListener('click', () => {
+    const u = previewUrls[previewIdx]; if (!u) return;
+    if (window.COMM) {
+      const singleSet = lastSet ? { title: lastSet.title || '知识卡片', summary: lastSet.summary || '', theme: currentTheme || lastSet.theme, cards: lastSet.cards || [] } : {};
+      COMM.openPublish([u], singleSet);
+    } else {
+      setStatus('社区功能未加载，请刷新后重试', true);
+    }
+    closePreview();
+  });
 
   // 主题切换条：列出 CoverEngine 的全部主题，点击即时换配色重渲染
   function renderThemeBar() {
@@ -178,19 +258,6 @@
     }
     setTimeout(() => setStatus('', false), 2000);
   }
-
-  // ===== 保存全部图片 =====
-  $('#saveAllBtn').addEventListener('click', () => {
-    const urls = JSON.parse($('#result').dataset.urls || '[]');
-    if (!urls.length) return;
-    urls.forEach((u, i) => {
-      const a = document.createElement('a');
-      a.href = u; a.download = `知卡_${(lastSet && lastSet.title) || 'card'}_${i + 1}.jpg`;
-      document.body.appendChild(a); a.click(); a.remove();
-    });
-    setStatus('已触发下载（iOS 可长按图片保存到相册）', true);
-    setTimeout(() => setStatus('', false), 2500);
-  });
 
   // ===== 复制全部文案 =====
   $('#copyBtn').addEventListener('click', copyText);
