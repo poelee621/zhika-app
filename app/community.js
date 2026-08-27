@@ -9,15 +9,36 @@
 
   const COMM = {
     _feedCursor: null,
+    _feedPage: 1,
+    _feedReqId: 0,
     _feedLoading: false,
     _feedEnd: false,
+    _feedSort: 'latest',  // latest | hot | for_you
+    _feedTag: '',         // '' = 全部
     _mineCursor: null,
     _mineEnd: false,
     _meId: (SOCIAL.user() || {}).id || '',
     _detailCard: null,
     _publishUrls: [],
     _publishSet: null,
+    _publishTags: [],
     _smsTimer: null,
+
+    // 分类体系（与 CoverEngine 10 主题对齐）
+    TAG_DEFS: [
+      { key: 'tech', label: '科技', icon: '🤖' },
+      { key: 'finance', label: '财经', icon: '📈' },
+      { key: 'emotion', label: '情感', icon: '💗' },
+      { key: 'food', label: '美食', icon: '🍜' },
+      { key: 'travel', label: '旅行', icon: '✈️' },
+      { key: 'career', label: '职场', icon: '💼' },
+      { key: 'knowledge', label: '知识', icon: '📚' },
+      { key: 'health', label: '健康', icon: '💪' },
+      { key: 'fashion', label: '时尚', icon: '👗' },
+      { key: 'life', label: '生活', icon: '🏡' }
+    ],
+    tagLabel(key) { const t = this.TAG_DEFS.find(x => x.key === key); return t ? t.label : key; },
+    tagIcon(key) { const t = this.TAG_DEFS.find(x => x.key === key); return t ? t.icon : '🏷'; },
 
     // ==================== 视图切换（底部导航）====================
     switchView(name) {
@@ -31,28 +52,95 @@
       if (name === 'mine') this.renderMine();
     },
 
+    // ==================== 首页分类栏 ====================
+    renderFeedTabs() {
+      const bar = $('#feedTabs');
+      if (!bar || bar.childElementCount) return;
+      // 排序模式：最新 / 热门 / 推荐
+      const modes = [
+        { sort: 'latest', label: '🕐 最新' },
+        { sort: 'hot', label: '🔥 热门' },
+        { sort: 'for_you', label: '❤️ 推荐' }
+      ];
+      const modeWrap = document.createElement('div');
+      modeWrap.className = 'feed-mode-row';
+      modes.forEach(m => {
+        const b = document.createElement('button');
+        b.className = 'feed-mode' + (this._feedSort === m.sort ? ' active' : '');
+        b.textContent = m.label;
+        b.dataset.sort = m.sort;
+        b.onclick = () => this.setFeedMode(m.sort, '');
+        modeWrap.appendChild(b);
+      });
+      bar.appendChild(modeWrap);
+      // 分类（横向滚动）
+      const tagWrap = document.createElement('div');
+      tagWrap.className = 'feed-tag-row';
+      const all = document.createElement('button');
+      all.className = 'feed-tag' + (this._feedTag === '' ? ' active' : '');
+      all.textContent = '全部';
+      all.onclick = () => this.setFeedMode(this._feedSort, '');
+      tagWrap.appendChild(all);
+      this.TAG_DEFS.forEach(t => {
+        const b = document.createElement('button');
+        b.className = 'feed-tag' + (this._feedTag === t.key ? ' active' : '');
+        b.textContent = t.icon + ' ' + t.label;
+        b.onclick = () => this.setFeedMode(this._feedSort, t.key);
+        tagWrap.appendChild(b);
+      });
+      bar.appendChild(tagWrap);
+    },
+    setFeedMode(sort, tag) {
+      if (sort === 'for_you' && !SOCIAL.isLogin()) {
+        this.openLogin('登录后开启个性化推荐');
+        return;
+      }
+      this._feedSort = sort;
+      this._feedTag = tag;
+      // 高亮
+      $$('#feedTabs .feed-mode').forEach(b => b.classList.toggle('active', b.dataset.sort === sort));
+      $$('#feedTabs .feed-tag').forEach((b, i) => {
+        const key = i === 0 ? '' : this.TAG_DEFS[i - 1].key;
+        b.classList.toggle('active', key === tag);
+      });
+      this.loadFeed(true);
+    },
+
     // ==================== 首页瀑布流 ====================
     async loadFeed(reset) {
-      if (reset) { this._feedCursor = null; this._feedEnd = false; $('#feedList').innerHTML = ''; }
-      if (this._feedLoading || this._feedEnd) return;
+      this.renderFeedTabs();
+      if (reset) { this._feedCursor = null; this._feedPage = 1; this._feedEnd = false; $('#feedList').innerHTML = ''; }
+      // 竞争保护：reset 时强制重发请求并丢弃旧响应；非 reset（滚动加载）时避免并发
+      if (this._feedLoading && !reset) return;
       this._feedLoading = true;
+      const myId = ++this._feedReqId;
       const sentinel = $('#feedSentinel');
       if (sentinel) sentinel.textContent = '加载中…';
       try {
-        const d = await SOCIAL.feed(this._feedCursor);
-        this._feedCursor = d.next_cursor;
-        if (!d.next_cursor) this._feedEnd = true;
-        this._appendCards($('#feedList'), d.cards, false);
-        if (sentinel) sentinel.textContent = this._feedEnd ? (d.cards.length ? '— 到底啦 —' : '') : '上滑加载更多';
-        if (!d.cards.length && reset) {
-          $('#feedEmpty').classList.remove('hidden');
+        const opts = { sort: this._feedSort, tag: this._feedTag, limit: 20 };
+        let d;
+        if (this._feedSort === 'latest') {
+          opts.cursor = this._feedCursor;
+          d = await SOCIAL.feed(opts);
+          if (myId !== this._feedReqId) return; // 过期响应
+          this._feedCursor = d.next_cursor;
+          if (!d.next_cursor) this._feedEnd = true;
+          this._appendCards($('#feedList'), d.cards, false);
         } else {
-          $('#feedEmpty').classList.add('hidden');
+          opts.page = this._feedPage;
+          d = await SOCIAL.feed(opts);
+          if (myId !== this._feedReqId) return;
+          this._feedPage = d.next_page || this._feedPage + 1;
+          if (!d.next_page) this._feedEnd = true;
+          this._appendCards($('#feedList'), d.cards, false);
         }
+        if (sentinel) sentinel.textContent = this._feedEnd ? (($('#feedList').childElementCount) ? '— 到底啦 —' : '') : '上滑加载更多';
+        $('#feedEmpty').classList.toggle('hidden', !!$('#feedList').childElementCount);
       } catch (e) {
         console.error('[feed]', e);
-        if (sentinel) sentinel.textContent = '加载失败，上滑重试';
-      } finally { this._feedLoading = false; }
+        if (e && e.status === 401) { this._pendingForYou = true; this.openLogin('登录后开启个性化推荐'); }
+        else if (sentinel) sentinel.textContent = '加载失败，上滑重试';
+      } finally { if (myId === this._feedReqId) this._feedLoading = false; }
     },
 
     // 渲染卡片列表（瀑布流项）
@@ -67,6 +155,7 @@
           <div class="wf-imgwrap">
             <img class="wf-img" src="${cover}" alt="${esc(c.title)}" loading="lazy" onerror="this.closest('.wf-item').style.display='none'"/>
             <span class="wf-title">${esc(c.title)}</span>
+            ${(c.tags && c.tags.length) ? `<span class="wf-tag">${this.tagIcon(c.tags[0])} ${esc(this.tagLabel(c.tags[0]))}</span>` : ''}
           </div>
           <div class="wf-meta">
             <span class="wf-author">
@@ -115,6 +204,7 @@
         </div>
         <div class="dt-title">${esc(c.title)}</div>
         ${c.summary ? `<div class="dt-summary">${esc(c.summary)}</div>` : ''}
+        ${(c.tags && c.tags.length) ? `<div class="dt-tags">${c.tags.map(t => `<span class="dt-tag" data-tag="${t}">${this.tagIcon(t)} ${esc(this.tagLabel(t))}</span>`).join('')}</div>` : ''}
         <div class="dt-actions">
           <button class="dt-btn ${c.liked ? 'on' : ''}" id="dtLike">${c.liked ? '♥' : '♡'} <span id="dtLikeN">${c.like_count || 0}</span></button>
           <button class="dt-btn ${c.faved ? 'on' : ''}" id="dtFav">${c.faved ? '★' : '☆'} <span id="dtFavN">${c.fav_count || 0}</span></button>
@@ -173,6 +263,14 @@
       };
       $('#dtShare').onclick = () => this.shareCard(c);
       $('#dtSave').onclick = () => this.saveCard(c);
+      // 详情页标签点击 → 跳到该分类
+      $$('#detailModal .dt-tag').forEach(tag => {
+        tag.onclick = () => {
+          this.closeDetail();
+          this.switchView('home');
+          this.setFeedMode('latest', tag.dataset.tag);
+        };
+      });
       $('#dtCmtSend').onclick = async () => {
         if (!needLogin()) return;
         const text = $('#dtCmtText').value.trim();
@@ -385,6 +483,11 @@
         this.toast('登录成功，欢迎 ' + (u.nickname || '知友'));
         // 若是在发布流程中，继续发布
         if (this._pendingPublish) { const p = this._pendingPublish; this._pendingPublish = null; this.openPublish(p.urls, p.set); }
+        // 若之前在推荐模式（401 被拦），登录后重载
+        if (this._feedSort === 'for_you' || (this._feedSort === 'for_you' && this._pendingForYou)) {
+          this._pendingForYou = false;
+          this.loadFeed(true);
+        }
         this.renderMine();
         if ($('#view-mine').classList.contains('active')) this.renderMine();
       } catch (e) {
@@ -404,6 +507,30 @@
       this._publishSet = set || {};
       $('#pubModal').classList.remove('hidden');
       $('#pubTitle').value = (set && set.title) || '';
+      // 标签选择：默认按当前主题预选一个
+      this._publishTags = [];
+      const tagBox = $('#pubTags');
+      tagBox.innerHTML = '';
+      this.TAG_DEFS.forEach(t => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'tag-chip';
+        chip.textContent = t.icon + ' ' + t.label;
+        chip.dataset.key = t.key;
+        chip.onclick = () => {
+          const i = this._publishTags.indexOf(t.key);
+          if (i >= 0) { this._publishTags.splice(i, 1); chip.classList.remove('on'); }
+          else if (this._publishTags.length >= 3) { this.toast('最多选 3 个分类'); return; }
+          else { this._publishTags.push(t.key); chip.classList.add('on'); }
+        };
+        tagBox.appendChild(chip);
+      });
+      const preset = this.TAG_DEFS.find(t => t.key === (set && set.theme));
+      if (preset) {
+        this._publishTags.push(preset.key);
+        const chip = tagBox.querySelector(`[data-key="${preset.key}"]`);
+        if (chip) chip.classList.add('on');
+      }
       const list = $('#pubImgs');
       list.innerHTML = '';
       this._publishUrls.forEach((u, i) => {
@@ -433,6 +560,7 @@
           title,
           summary: this._publishSet.summary || '',
           theme: this._publishSet.theme || 'knowledge',
+          tags: this._publishTags.slice(0, 3),
           cards: this._publishSet.cards || [],
           images: compressed
         });

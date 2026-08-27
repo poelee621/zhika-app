@@ -21,8 +21,9 @@
       <h1 class="feed-title">🏠 知卡社区</h1>
       <span class="feed-sub">看看大家都在学什么</span>
     </div>
+    <div id="feedTabs" class="feed-tabs"></div>
     <div id="feedEmpty" class="feed-empty hidden">
-      <p>还没有人发布卡片，去创作一套吧～</p>
+      <p>这个分类还没有卡片，去创作一套吧～</p>
       <button class="primary-btn" onclick="COMM.switchView('create')">✍️ 去创作</button>
     </div>
     <div id="feedList" class="feed-list"></div>
@@ -142,6 +143,8 @@
       <h3>📤 发布到社区</h3>
       <p class="modal-sub">选择要发布的卡片图片</p>
       <input id="pubTitle" class="text-input" type="text" maxlength="60" placeholder="给这组卡片起个标题…" />
+      <div class="pub-tags-label">🏷 选择分类（最多 3 个，决定推给谁看）</div>
+      <div id="pubTags" class="pub-tags"></div>
       <div id="pubImgs" class="pub-imgs"></div>
       <button id="pubSend" class="primary-btn block">发布</button>
       <button id="closePub" class="text-btn">取消</button>

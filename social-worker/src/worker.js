@@ -8,6 +8,11 @@
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+// 分类标签白名单（与前端 CoverEngine 10 主题对齐）
+const TAG_KEYS = ['tech', 'finance', 'emotion', 'food', 'travel', 'career', 'knowledge', 'health', 'fashion', 'life'];
+const TAG_LABELS = { tech: '科技', finance: '财经', emotion: '情感', food: '美食', travel: '旅行', career: '职场', knowledge: '知识', health: '健康', fashion: '时尚', life: '生活' };
+const THEME_TO_TAG = { tech: 'tech', finance: 'finance', emotion: 'emotion', food: 'food', travel: 'travel', career: 'career', knowledge: 'knowledge', health: 'health', fashion: 'fashion', life: 'life' };
+
 // ==================== 工具 ====================
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,Authorization' }
@@ -93,11 +98,14 @@ async function cardView(env, card, meId) {
     liked = !!l.results[0]; faved = !!f.results[0];
   }
   const images = JSON.parse(card.images || '[]');
+  let tags = [];
+  try { tags = JSON.parse(card.tags || '[]'); } catch { tags = []; }
   return {
     id: card.id,
     title: card.title || '',
     summary: card.summary || '',
     theme: card.theme || 'knowledge',
+    tags,
     cover: images[0] ? `/media/${images[0]}` : '',
     images: images.map(i => `/media/${i}`),
     cards: JSON.parse(card.cards || '[]'),
@@ -201,14 +209,20 @@ async function handle(req, env) {
     const body = await req.json().catch(() => ({}));
     const title = String(body.title || '').trim().slice(0, 60);
     if (!title) return fail('标题不能为空');
+    // 标签：白名单校验，最多 3 个；未传时按 theme 映射一个默认标签
+    let tags = Array.isArray(body.tags) ? body.tags.filter(t => TAG_KEYS.includes(String(t))).slice(0, 3).map(String) : [];
+    if (!tags.length) {
+      const mapped = THEME_TO_TAG[String(body.theme || '')];
+      if (mapped) tags = [mapped];
+    }
     const rawImages = Array.isArray(body.images) ? body.images.slice(0, 12) : [];
     if (!rawImages.length) return fail('请至少上传一张卡片图');
     // 存图
     const ids = [];
     for (const d of rawImages) { const r = await saveImage(env, d); if (!r.id) return r; ids.push(r.id); }
     const id = uid();
-    await env.DB.prepare('INSERT INTO cards (id, user_id, title, summary, theme, cover_id, images, cards, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-      .bind(id, me.id, title, String(body.summary || '').slice(0, 200), String(body.theme || 'knowledge'), ids[0], JSON.stringify(ids), JSON.stringify(Array.isArray(body.cards) ? body.cards : []), now()).run();
+    await env.DB.prepare('INSERT INTO cards (id, user_id, title, summary, theme, tags, cover_id, images, cards, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .bind(id, me.id, title, String(body.summary || '').slice(0, 200), String(body.theme || 'knowledge'), JSON.stringify(tags), ids[0], JSON.stringify(ids), JSON.stringify(Array.isArray(body.cards) ? body.cards : []), now()).run();
     const card = await env.DB.prepare('SELECT * FROM cards WHERE id = ?').bind(id).first();
     return json({ ok: true, card: await cardView(env, card, me.id) });
   });
@@ -227,18 +241,58 @@ async function handle(req, env) {
   });
 
   // ---- 瀑布流 feed ----
+  // sort: latest(默认,时间倒序) | hot(热度) | for_you(喜好推送,需登录)
+  // tag: 可选,分类过滤(如 tech)
+  // 分页: latest 用 cursor(时间+id); hot/for_you 用 offset
   if (method === 'GET' && path === '/api/feed') {
     const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '20', 10) || 20, 1), 50);
+    const sort = url.searchParams.get('sort') || 'latest';
+    const tag = url.searchParams.get('tag') || '';
+    const validTag = TAG_KEYS.includes(tag) ? tag : '';
+    const tagCond = validTag ? ` AND instr(tags, '"${validTag}"') > 0` : '';
+    let cards = [];
+
+    if (sort === 'hot' || sort === 'for_you') {
+      // 热度分数：赞*3 + 藏*2 + 评*2
+      const page = Math.max(parseInt(url.searchParams.get('page') || '1', 10) || 1, 1);
+      const offset = (page - 1) * limit;
+      let orderBy = '(like_count*3 + fav_count*2 + comment_count*2) DESC, created_at DESC, id DESC';
+      let prefScore = '';
+      // 喜好推送：从用户点过赞/藏过的卡片的标签统计偏好
+      if (sort === 'for_you') {
+        if (!me) return fail('喜好推送需要登录', 401);
+        const rows = await env.DB.prepare(
+          `SELECT DISTINCT tags FROM cards WHERE id IN (SELECT card_id FROM likes WHERE user_id = ?) OR id IN (SELECT card_id FROM favorites WHERE user_id = ?)`
+        ).bind(me.id, me.id).all();
+        const counter = {};
+        for (const r of rows.results) {
+          try { for (const t of JSON.parse(r.tags || '[]')) if (TAG_KEYS.includes(t)) counter[t] = (counter[t] || 0) + 1; } catch {}
+        }
+        const prefs = Object.entries(counter).sort((a, b) => b[1] - a[1]).slice(0, 5).map(x => x[0]);
+        if (prefs.length) {
+          prefScore = '(' + prefs.map(t => `CASE WHEN instr(tags, '"${t}"') > 0 THEN 1 ELSE 0 END`).join(' + ') + ')*100 + ';
+          orderBy = prefScore + orderBy;
+        } else {
+          orderBy = '(like_count*3 + fav_count*2 + comment_count*2) DESC, created_at DESC, id DESC'; // 无偏好时退回热门
+        }
+      }
+      const rows = await env.DB.prepare(`SELECT * FROM cards WHERE 1=1${tagCond} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
+        .bind(limit, offset).all();
+      for (const c of rows.results) cards.push(await cardView(env, c, me ? me.id : null));
+      const hasMore = cards.length === limit;
+      return json({ ok: true, cards, next_page: hasMore ? page + 1 : null });
+    }
+
+    // latest：游标分页 + 可选 tag 过滤
     const cursor = url.searchParams.get('cursor') || '';
     let rows;
     if (cursor) {
       const [cts, cid] = cursor.split('_');
-      rows = await env.DB.prepare('SELECT * FROM cards WHERE created_at < ? OR (created_at = ? AND id < ?) ORDER BY created_at DESC, id DESC LIMIT ?')
+      rows = await env.DB.prepare(`SELECT * FROM cards WHERE (created_at < ? OR (created_at = ? AND id < ?))${tagCond} ORDER BY created_at DESC, id DESC LIMIT ?`)
         .bind(Number(cts), Number(cts), cid, limit).all();
     } else {
-      rows = await env.DB.prepare('SELECT * FROM cards ORDER BY created_at DESC, id DESC LIMIT ?').bind(limit).all();
+      rows = await env.DB.prepare(`SELECT * FROM cards WHERE 1=1${tagCond} ORDER BY created_at DESC, id DESC LIMIT ?`).bind(limit).all();
     }
-    const cards = [];
     for (const c of rows.results) cards.push(await cardView(env, c, me ? me.id : null));
     const last = cards.length ? cards[cards.length - 1] : null;
     return json({ ok: true, cards, next_cursor: last ? `${last.created_at}_${last.id}` : null });

@@ -17,13 +17,14 @@ CREATE TABLE IF NOT EXISTS sms_codes (
   next_at INTEGER NOT NULL
 );
 
--- 卡片发布（images = media id 列表 JSON；cards = 原始卡片数据 JSON）
+-- 卡片发布（images = media id 列表 JSON；cards = 原始卡片数据 JSON；tags = 分类标签 JSON 数组，如 ["tech","knowledge"]）
 CREATE TABLE IF NOT EXISTS cards (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   title TEXT DEFAULT '',
   summary TEXT DEFAULT '',
   theme TEXT DEFAULT 'knowledge',
+  tags TEXT DEFAULT '[]',
   cover_id TEXT,
   images TEXT DEFAULT '[]',
   cards TEXT DEFAULT '[]',
@@ -66,3 +67,5 @@ CREATE TABLE IF NOT EXISTS media (
 CREATE INDEX IF NOT EXISTS idx_cards_created ON cards(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_likes_user ON likes(user_id);
+CREATE INDEX IF NOT EXISTS idx_favs_user ON favorites(user_id);

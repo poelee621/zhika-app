@@ -153,6 +153,30 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 .feed-head { padding: 18px 16px 6px; }
 .feed-title { margin: 0; font-size: 22px; font-weight: 800; }
 .feed-sub { color: var(--sub); font-size: 13px; }
+
+/* 首页分类栏 */
+.feed-tabs { position: sticky; top: 0; z-index: 9; background: var(--bg); padding: 8px 0 2px; }
+.feed-mode-row { display: flex; gap: 8px; padding: 0 16px 8px; }
+.feed-mode {
+  flex: 1; padding: 9px 0; border: 1px solid var(--line); background: var(--card);
+  border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--sub); cursor: pointer;
+}
+.feed-mode.active { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+.feed-tag-row { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 8px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.feed-tag-row::-webkit-scrollbar { display: none; }
+.feed-tag {
+  flex-shrink: 0; padding: 6px 14px; border: 1px solid var(--line); background: var(--card);
+  border-radius: 999px; font-size: 13px; color: var(--ink); cursor: pointer; white-space: nowrap;
+}
+.feed-tag.active { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); font-weight: 700; }
+
+/* 卡片左上分类角标 */
+.wf-tag {
+  position: absolute; left: 8px; top: 8px;
+  background: rgba(0,0,0,.55); color: #fff; font-size: 10px;
+  padding: 2px 8px; border-radius: 999px; backdrop-filter: blur(4px);
+}
+
 .feed-list { columns: 2; column-gap: 10px; padding: 12px 12px 8px; }
 .wf-item {
   break-inside: avoid; margin-bottom: 10px; background: var(--card);
@@ -204,6 +228,14 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 .dt-imgwrap img { width: 100%; display: block; }
 .dt-title { font-size: 20px; font-weight: 800; padding: 8px 18px 0; }
 .dt-summary { color: var(--sub); font-size: 14px; padding: 6px 18px 0; }
+/* 详情页标签 */
+.dt-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 18px 0; }
+.dt-tag {
+  font-size: 12px; padding: 4px 12px; border-radius: 999px;
+  background: var(--brand-soft); color: var(--brand); font-weight: 600; cursor: pointer;
+  border: 1px solid transparent;
+}
+.dt-tag:active { border-color: var(--brand); }
 .dt-actions { display: flex; gap: 10px; padding: 14px 18px; flex-wrap: wrap; }
 .dt-btn {
   border: 1px solid var(--line); background: var(--card); color: var(--ink);
@@ -247,6 +279,15 @@ body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ==================== 发布弹窗 ==================== */
+.pub-tags-label { font-size: 13px; color: var(--sub); margin: 14px 0 8px; text-align: left; }
+.pub-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.tag-chip {
+  font-size: 13px; padding: 7px 14px; border-radius: 999px;
+  border: 1.5px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+  transition: transform .12s ease;
+}
+.tag-chip:active { transform: scale(.94); }
+.tag-chip.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); font-weight: 700; }
 .pub-imgs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; max-height: 300px; overflow-y: auto; }
 .pub-img { position: relative; border-radius: 10px; overflow: hidden; border: 2px solid transparent; cursor: pointer; }
 .pub-img.checked { border-color: var(--brand); }

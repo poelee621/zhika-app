@@ -55,7 +55,17 @@
 
     // ---- 卡片 ----
     publish(payload) { return this.post('/api/cards', payload); },
-    feed(cursor, limit = 20) { return this.get('/api/feed' + (cursor ? `?cursor=${encodeURIComponent(cursor)}&limit=${limit}` : `?limit=${limit}`)); },
+    // feed: opts {sort: latest|hot|for_you, tag: 分类key, cursor/page: 分页}
+    feed(opts) {
+      opts = opts || {};
+      const qs = [];
+      if (opts.sort) qs.push('sort=' + encodeURIComponent(opts.sort));
+      if (opts.tag) qs.push('tag=' + encodeURIComponent(opts.tag));
+      if (opts.cursor) qs.push('cursor=' + encodeURIComponent(opts.cursor));
+      if (opts.page) qs.push('page=' + opts.page);
+      qs.push('limit=' + (opts.limit || 20));
+      return this.get('/api/feed?' + qs.join('&'));
+    },
     card(id) { return this.get('/api/cards/' + id); },
     delCard(id) { return this.del('/api/cards/' + id); },
     like(id) { return this.post('/api/cards/' + id + '/like'); },
