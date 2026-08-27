@@ -15,63 +15,138 @@
     </div>
   </header>
 
-  <main class="container">
-    <!-- 来源切换 -->
-    <div class="tabs" id="tabs">
-      <button class="tab active" data-src="link">🔗 链接</button>
-      <button class="tab" data-src="image">📷 截图</button>
-      <button class="tab" data-src="text">✍️ 文本</button>
+  <!-- ============ 视图：社区首页（瀑布流） ============ -->
+  <main id="view-home" class="view active">
+    <div class="feed-head">
+      <h1 class="feed-title">🏠 知卡社区</h1>
+      <span class="feed-sub">看看大家都在学什么</span>
     </div>
-
-    <!-- 链接模式 -->
-    <section class="panel active" data-panel="link">
-      <input id="urlInput" class="text-input" type="url" placeholder="粘贴文章 / 公众号 / 新闻 / 视频链接…" />
-      <div class="row">
-        <select id="linkType" class="select">
-          <option value="article">文章 / 新闻 / 公众号</option>
-          <option value="video">视频（文案 / 字幕）</option>
-        </select>
-        <button id="ingestBtn" class="primary-btn">提取内容</button>
-      </div>
-    </section>
-
-    <!-- 图片模式 -->
-    <section class="panel" data-panel="image">
-      <button id="pickImgBtn" class="primary-btn block">选择电子书 / 截图</button>
-      <p class="hint">支持电子书内页、文章截图、PPT 截图，自动识别文字</p>
-      <input id="fileInput" type="file" accept="image/*" class="visually-hidden" />
-    </section>
-
-    <!-- 文本模式 -->
-    <section class="panel" data-panel="text">
-      <textarea id="textInput" class="textarea" placeholder="直接粘贴一段文字、读书笔记、会议记录…"></textarea>
-      <button id="genTextBtn" class="primary-btn block">生成知识卡片</button>
-    </section>
-
-    <!-- 状态条 -->
-    <div id="status" class="status hidden"></div>
-
-    <!-- 卡片预览 -->
-    <section id="result" class="result hidden">
-      <div class="result-head">
-        <h2 id="resultTitle"></h2>
-        <p id="resultSummary" class="summary"></p>
-      </div>
-      <div id="themeBar" class="theme-bar hidden"></div>
-      <div id="cardList" class="card-list"></div>
-      <div class="row">
-        <button id="saveAllBtn" class="primary-btn">保存全部图片</button>
-        <button id="copyBtn" class="ghost-btn">复制文案</button>
-        <button id="reviewAddBtn" class="ghost-btn">加入复习</button>
-      </div>
-    </section>
-
-    <!-- 复习区 -->
-    <section class="review">
-      <h3>📅 今日复习 <span id="dueCount" class="pill">0</span></h3>
-      <div id="dueList" class="due-list"></div>
-    </section>
+    <div id="feedEmpty" class="feed-empty hidden">
+      <p>还没有人发布卡片，去创作一套吧～</p>
+      <button class="primary-btn" onclick="COMM.switchView('create')">✍️ 去创作</button>
+    </div>
+    <div id="feedList" class="feed-list"></div>
+    <div id="feedSentinel" class="wf-sentinel">上滑加载更多</div>
   </main>
+
+  <!-- ============ 视图：创作（原有功能） ============ -->
+  <main id="view-create" class="view">
+    <div class="container">
+      <!-- 来源切换 -->
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-src="link">🔗 链接</button>
+        <button class="tab" data-src="image">📷 截图</button>
+        <button class="tab" data-src="text">✍️ 文本</button>
+      </div>
+
+      <!-- 链接模式 -->
+      <section class="panel active" data-panel="link">
+        <input id="urlInput" class="text-input" type="url" placeholder="粘贴文章 / 公众号 / 新闻 / 视频链接…" />
+        <div class="row">
+          <select id="linkType" class="select">
+            <option value="article">文章 / 新闻 / 公众号</option>
+            <option value="video">视频（文案 / 字幕）</option>
+          </select>
+          <button id="ingestBtn" class="primary-btn">提取内容</button>
+        </div>
+      </section>
+
+      <!-- 图片模式 -->
+      <section class="panel" data-panel="image">
+        <button id="pickImgBtn" class="primary-btn block">选择电子书 / 截图</button>
+        <p class="hint">支持电子书内页、文章截图、PPT 截图，自动识别文字</p>
+        <input id="fileInput" type="file" accept="image/*" class="visually-hidden" />
+      </section>
+
+      <!-- 文本模式 -->
+      <section class="panel" data-panel="text">
+        <textarea id="textInput" class="textarea" placeholder="直接粘贴一段文字、读书笔记、会议记录…"></textarea>
+        <button id="genTextBtn" class="primary-btn block">生成知识卡片</button>
+      </section>
+
+      <!-- 状态条 -->
+      <div id="status" class="status hidden"></div>
+
+      <!-- 卡片预览 -->
+      <section id="result" class="result hidden">
+        <div class="result-head">
+          <h2 id="resultTitle"></h2>
+          <p id="resultSummary" class="summary"></p>
+        </div>
+        <div id="themeBar" class="theme-bar hidden"></div>
+        <div id="cardList" class="card-list"></div>
+        <div class="row">
+          <button id="saveAllBtn" class="primary-btn">保存全部图片</button>
+          <button id="copyBtn" class="ghost-btn">复制文案</button>
+          <button id="reviewAddBtn" class="ghost-btn">加入复习</button>
+          <button id="publishBtn" class="primary-btn alt">发布到社区</button>
+        </div>
+      </section>
+
+      <!-- 复习区 -->
+      <section class="review">
+        <h3>📅 今日复习 <span id="dueCount" class="pill">0</span></h3>
+        <div id="dueList" class="due-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ============ 视图：我的 ============ -->
+  <main id="view-mine" class="view"></main>
+
+  <!-- ============ 底部导航 ============ -->
+  <nav class="tabbar">
+    <button class="tabbar-btn active" data-view="home">🏠<span>首页</span></button>
+    <button class="tabbar-btn" data-view="create">✨<span>创作</span></button>
+    <button class="tabbar-btn" data-view="mine">👤<span>我的</span></button>
+  </nav>
+
+  <!-- ============ 卡片详情弹窗 ============ -->
+  <div id="detailModal" class="modal hidden">
+    <div class="modal-full">
+      <button id="closeDetail" class="modal-close">✕</button>
+      <div id="detailBody" class="detail-body"></div>
+    </div>
+  </div>
+
+  <!-- ============ 用户主页弹窗 ============ -->
+  <div id="userModal" class="modal hidden">
+    <div class="modal-full">
+      <button id="closeUser" class="modal-close">✕</button>
+      <div id="userBody" class="detail-body"></div>
+    </div>
+  </div>
+
+  <!-- ============ 登录弹窗 ============ -->
+  <div id="loginModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>📱 登录知卡</h3>
+      <p id="loginHint" class="modal-sub">手机号登录，未注册将自动创建账号</p>
+      <div id="loginPhoneWrap">
+        <input id="loginPhone" class="text-input" type="tel" maxlength="11" placeholder="请输入手机号" inputmode="numeric" />
+        <button id="loginSendBtn" class="primary-btn block">获取验证码</button>
+      </div>
+      <div id="loginCodeWrap" class="hidden">
+        <input id="loginCode" class="text-input" type="tel" maxlength="6" placeholder="请输入 6 位验证码" inputmode="numeric" />
+        <button id="loginCodeBtn" class="primary-btn block">登录 / 注册</button>
+        <div id="devCode" class="dev-code hidden"></div>
+      </div>
+      <button id="closeLogin" class="text-btn">取消</button>
+      <div class="login-steps"><span id="loginStep">1</span>/2</div>
+    </div>
+  </div>
+
+  <!-- ============ 发布弹窗 ============ -->
+  <div id="pubModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>📤 发布到社区</h3>
+      <p class="modal-sub">选择要发布的卡片图片</p>
+      <input id="pubTitle" class="text-input" type="text" maxlength="60" placeholder="给这组卡片起个标题…" />
+      <div id="pubImgs" class="pub-imgs"></div>
+      <button id="pubSend" class="primary-btn block">发布</button>
+      <button id="closePub" class="text-btn">取消</button>
+    </div>
+  </div>
 
   <!-- 会员弹窗 -->
   <div id="vipModal" class="modal hidden">
@@ -92,6 +167,8 @@
   <script src="iap.js"></script>
   <script src="ingest.js"></script>
   <script src="spaced.js"></script>
+  <script src="social.js"></script>
+  <script src="community.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

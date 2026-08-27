@@ -1,0 +1,15 @@
+{
+  "name": "zhika-social",
+  "version": "0.1.0",
+  "private": true,
+  "description": "知卡社区版后端：用户/卡片/点赞/收藏/评论（Cloudflare Workers + D1）",
+  "type": "module",
+  "main": "src/worker.js",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

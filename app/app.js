@@ -195,6 +195,13 @@
   // ===== 复制全部文案 =====
   $('#copyBtn').addEventListener('click', copyText);
 
+  // ===== 发布到社区 =====
+  $('#publishBtn').addEventListener('click', () => {
+    const urls = JSON.parse($('#result').dataset.urls || '[]');
+    if (!urls.length) { setStatus('先生成卡片再发布', true); return; }
+    if (window.COMM) COMM.openPublish(urls, lastSet || {});
+  });
+
   // ===== 加入复习 =====
   $('#reviewAddBtn').addEventListener('click', () => {
     if (!lastSet) return;

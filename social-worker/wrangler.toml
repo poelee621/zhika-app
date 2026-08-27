@@ -1,0 +1,13 @@
+name = "zhika-social"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zhika-social"
+database_id = "6ec61ad3-df52-4561-93e9-67b913cf3dda"
+
+[vars]
+JWT_SECRET = "zhika-social-dev-secret-change-me"
+# 短信发送 hook（生产环境接短信服务商后填写；留空 = dev 模式，验证码直接返回）
+SMS_WEBHOOK = ""
