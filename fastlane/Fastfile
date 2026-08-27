@@ -17,6 +17,8 @@ platform :ios do
   end
 
   # 仅上传 metadata + 图标到 App Store Connect 后台，不提交审核、不上传二进制
+  # ⚠️ 图标是 App-level asset，跟 IPA build 是两条独立链路——IPA 上传不会更新 App Icon。
+  #    每次想换 logo 都必须跑这个 lane（手动 trigger workflow_dispatch）。
   lane :upload_metadata do
     deliver(
       skip_binary_upload: true,
@@ -26,6 +28,13 @@ platform :ios do
       skip_metadata: false,
       skip_screenshots: true,
       overwrite_screenshots: true,
+      # 显式指定图标路径——避免 deliver 因 zh-Hans 子目录有同名校验文件而漏传
+      app_icon: "./fastlane/metadata/app_icon.png",
+      # 跳过 precheck：API Key 模式 + 首版 App 触发的 verify 链路会崩，
+      # 但 metadata + icon 上传跟 precheck 是独立两步，跳过 precheck 不影响实际写入
+      skip_precheck: true,
+      # 详细日志，CI 里能看见 deliver 每一步在干什么
+      verbose: true,
       app_identifier: "com.coldtank.cards",
       app_version: "1.0",
       api_key_path: "./api_key.json",
