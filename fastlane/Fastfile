@@ -24,7 +24,7 @@ platform :ios do
       automatic_release: false,
       force: true,
       skip_metadata: false,
-      skip_screenshots: false,
+      skip_screenshots: true,
       overwrite_screenshots: true,
       app_identifier: "com.coldtank.cards",
       app_version: "1.0",

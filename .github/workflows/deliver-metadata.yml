@@ -50,6 +50,45 @@ jobs:
       - name: Install fastlane
         run: sudo gem install fastlane -N
 
+      - name: Patch fastlane gem（绕开 fastlane/fastlane#20538 首版 review detail 崩溃）
+        # fastlane 2.238 deliver 的 review_attachment_file() 无条件调
+        # app_store_version.fetch_app_store_review_detail 且无 rescue：
+        # 首版 App 没有 appStoreReviewDetail 资源时直接抛 "No data" 崩掉，
+        # 图标/元数据永远传不上去。用 Python 给该调用包上 rescue。
+        run: |
+          GEM=$(gem contents fastlane | grep 'deliver/lib/deliver/upload_metadata.rb' | head -1)
+          echo "patching: $GEM"
+          python3 - "$GEM" << 'PY'
+          import sys
+          path = sys.argv[1]
+          with open(path, encoding='utf-8') as f:
+              src = f.read()
+          old = """    def review_attachment_file(version)
+      app_store_review_detail = version.fetch_app_store_review_detail
+      app_store_review_attachments = app_store_review_detail.app_store_review_attachments || []"""
+          new = """    def review_attachment_file(version)
+      # PATCHED for fastlane/fastlane#20538: 首版 App 无 appStoreReviewDetail 时
+      # fetch_app_store_review_detail 抛 "No data" 且无 rescue，直接崩。包上 rescue。
+      app_store_review_detail = begin
+        version.fetch_app_store_review_detail
+      rescue => e
+        UI.verbose("No app store review detail yet (patched): #{e.message}")
+        nil
+      end
+      app_store_review_attachments = (app_store_review_detail ? app_store_review_detail.app_store_review_attachments : []) || []"""
+          if old in src:
+              src = src.replace(old, new)
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(src)
+              print("PATCH OK: review_attachment_file now rescues No data")
+          else:
+              print("WARN: pattern not found, gem may already be patched or version differs")
+              print("grep check:")
+              for i, line in enumerate(src.splitlines(), 1):
+                  if 'review_attachment_file' in line or 'fetch_app_store_review_detail' in line:
+                      print(f"  {i}: {line.strip()}")
+          PY
+
       - name: Ensure appStoreReviewDetail exists（绕过 fastlane 首版 review_attachment_file 的 No data 崩溃）
         continue-on-error: true
         env:
