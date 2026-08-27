@@ -130,7 +130,7 @@ const KnowledgeCards = {
     // 左右分隔
     ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(this.W / 2, 280); ctx.lineTo(this.W / 2, this.H - 160); ctx.stroke();
-    const parts = String(card.content || '').split(/\n|；|;|vs|VS|Vs/);
+    const parts = String(card.content || '').split(/\n|；|;|，|、|→|vs|VS|Vs/u);
     const half = (this.W - 220) / 2;
     parts.slice(0, 2).forEach((part, i) => {
       const cx = i === 0 ? 100 : this.W / 2 + 40;
@@ -152,7 +152,7 @@ const KnowledgeCards = {
     ctx.fillStyle = this.INK; ctx.font = '800 52px ' + this.FONT;
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText('方法论', 100, 150);
-    const items = String(card.content || '').split(/[；;\n]/).map(s => s.trim()).filter(Boolean).slice(0, 5);
+    const items = String(card.content || '').split(/[；;\n，、→]/u).map(s => s.trim()).filter(Boolean).slice(0, 5);
     let y = 300;
     items.forEach((it, i) => {
       ctx.fillStyle = t.accent;
@@ -176,7 +176,7 @@ const KnowledgeCards = {
     ctx.fillStyle = this.INK; ctx.font = '800 52px ' + this.FONT;
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText('时间线', 100, 150);
-    const nodes = String(card.content || '').split(/[；;\n]/).map(s => s.trim()).filter(Boolean).slice(0, 5);
+    const nodes = String(card.content || '').split(/[；;\n，、→]/u).map(s => s.trim()).filter(Boolean).slice(0, 5);
     let y = 300;
     ctx.strokeStyle = t.accent; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.moveTo(130, y); ctx.lineTo(130, y + (nodes.length - 1) * 180); ctx.stroke();

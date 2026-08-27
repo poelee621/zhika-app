@@ -47,3 +47,4 @@ ios_runs.json
 new_log.txt
 p12_b64.txt
 pubkey.json
+_browser_test/

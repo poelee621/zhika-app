@@ -184,15 +184,25 @@
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   // ===== 会员 =====
+  function isWeb() { return !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
   function openVip(msg) {
     $('#vipModal').classList.remove('hidden');
-    if (msg) $('#priceHint').textContent = msg;
+    if (msg) {
+      $('#priceHint').textContent = msg;
+    } else if (isWeb()) {
+      $('#priceHint').textContent = 'Web 预览版暂不支持购买，请在 iOS App 内升级 PRO';
+    }
   }
   $('#vipBtn').addEventListener('click', () => openVip(''));
   $('#closeVip').addEventListener('click', () => $('#vipModal').classList.add('hidden'));
-  $('#buyMonthly').addEventListener('click', () => { IAP.purchase('monthly').then(ok => { if (ok) { refreshVip(); $('#vipModal').classList.add('hidden'); } }); });
-  $('#buyYearly').addEventListener('click', () => { IAP.purchase('yearly').then(ok => { if (ok) { refreshVip(); $('#vipModal').classList.add('hidden'); } }); });
-  $('#restoreBtn').addEventListener('click', () => { IAP.restore().then(ok => { if (ok) refreshVip(); }); });
+  function webBlockBuy() {
+    if (!isWeb()) return false;
+    $('#priceHint').textContent = '订阅仅在 iOS App 内可用（Web 预览版）';
+    return true;
+  }
+  $('#buyMonthly').addEventListener('click', () => { if (webBlockBuy()) return; IAP.purchase('monthly').then(ok => { if (ok) { refreshVip(); $('#vipModal').classList.add('hidden'); } }); });
+  $('#buyYearly').addEventListener('click', () => { if (webBlockBuy()) return; IAP.purchase('yearly').then(ok => { if (ok) { refreshVip(); $('#vipModal').classList.add('hidden'); } }); });
+  $('#restoreBtn').addEventListener('click', () => { if (webBlockBuy()) return; IAP.restore().then(ok => { if (ok) refreshVip(); }); });
 
   // ===== 初始化 =====
   refreshVip();
