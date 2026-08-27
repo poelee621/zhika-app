@@ -364,7 +364,7 @@
           <div class="mine-empty">
             <div class="mine-logo">📚</div>
             <p>登录后发布你的知识卡片，让更多人看见</p>
-            <button class="primary-btn" id="mineLoginBtn">手机号登录</button>
+            <button class="primary-btn" id="mineLoginBtn">登录 / 注册</button>
           </div>`;
         $('#mineLoginBtn').onclick = () => this.openLogin('登录后即可发布、点赞、评论');
         return;
@@ -431,68 +431,20 @@
     // ==================== 登录弹窗 ====================
     openLogin(hint) {
       $('#loginModal').classList.remove('hidden');
-      $('#loginHint').textContent = hint || '手机号登录，未注册将自动创建账号';
-      $('#loginStep').textContent = '1';
-      $('#loginPhoneWrap').classList.remove('hidden');
-      $('#loginCodeWrap').classList.add('hidden');
-      $('#loginSendBtn').classList.remove('hidden');
-      $('#loginCodeBtn').classList.add('hidden');
-      $('#devCode').classList.add('hidden');
+      $('#loginHint').textContent = hint || '选择一个方式登录，未注册将自动创建账号';
     },
     closeLogin() { $('#loginModal').classList.add('hidden'); if (this._smsTimer) clearInterval(this._smsTimer); },
 
-    async _sendSms() {
-      const phone = $('#loginPhone').value.trim();
-      if (!/^1\d{10}$/.test(phone)) { this.toast('请输入正确的手机号'); return; }
-      const btn = $('#loginSendBtn');
-      btn.disabled = true;
+    async _thirdLogin(provider) {
       try {
-        const d = await SOCIAL.sendCode(phone);
-        let wait = 60;
-        btn.textContent = wait + 's 后重发';
-        this._smsTimer = setInterval(() => {
-          wait--; btn.textContent = wait + 's 后重发';
-          if (wait <= 0) { clearInterval(this._smsTimer); btn.disabled = false; btn.textContent = '重新发送'; }
-        }, 1000);
-        $('#loginStep').textContent = '2';
-        $('#loginPhoneWrap').classList.add('hidden');
-        $('#loginCodeWrap').classList.remove('hidden');
-        $('#loginSendBtn').classList.add('hidden');
-        $('#loginCodeBtn').classList.remove('hidden');
-        $('#loginCode').focus();
-        if (d.dev && d.code) {
-          $('#devCode').classList.remove('hidden');
-          $('#devCode').textContent = '测试环境验证码：' + d.code;
-        } else {
-          $('#devCode').classList.add('hidden');
-        }
-      } catch (e) {
-        btn.disabled = false; btn.textContent = '发送验证码';
-        this.toast(e.message);
-      }
-    },
-    async _doLogin() {
-      const phone = $('#loginPhone').value.trim();
-      const code = $('#loginCode').value.trim();
-      if (!code) { this.toast('请输入验证码'); return; }
-      $('#loginCodeBtn').disabled = true;
-      try {
-        const u = await SOCIAL.verify(phone, code);
+        const u = await SOCIAL.thirdLogin(provider);
         this._meId = u.id;
         this.closeLogin();
         this.toast('登录成功，欢迎 ' + (u.nickname || '知友'));
-        // 若是在发布流程中，继续发布
         if (this._pendingPublish) { const p = this._pendingPublish; this._pendingPublish = null; this.openPublish(p.urls, p.set); }
-        // 若之前在推荐模式（401 被拦），登录后重载
-        if (this._feedSort === 'for_you' || (this._feedSort === 'for_you' && this._pendingForYou)) {
-          this._pendingForYou = false;
-          this.loadFeed(true);
-        }
+        if (this._feedSort === 'for_you' || this._pendingForYou) { this._pendingForYou = false; this.loadFeed(true); }
         this.renderMine();
-        if ($('#view-mine').classList.contains('active')) this.renderMine();
-      } catch (e) {
-        this.toast(e.message);
-      } finally { $('#loginCodeBtn').disabled = false; }
+      } catch (e) { this.toast(e.message); }
     },
 
     // ==================== 发布弹窗 ====================
@@ -641,9 +593,11 @@
         const m = document.getElementById(id);
         if (m) m.addEventListener('click', (ev) => { if (ev.target === m) { if (id === 'loginModal') this.closeLogin(); else if (id === 'detailModal') this.closeDetail(); else if (id === 'userModal') this.closeUser(); else this.closePublish(); } });
       });
-      // 登录事件
-      $('#loginSendBtn').onclick = () => this._sendSms();
-      $('#loginCodeBtn').onclick = () => this._doLogin();
+      // 第三方一键登录
+      $('#loginWechat').onclick = () => this._thirdLogin('wechat');
+      $('#loginDouyin').onclick = () => this._thirdLogin('douyin');
+      $('#loginXiaohongshu').onclick = () => this._thirdLogin('xiaohongshu');
+      $('#closeLogin').onclick = () => this.closeLogin();
       // 发布事件
       $('#pubSend').onclick = () => this._doPublish();
       // 初始视图

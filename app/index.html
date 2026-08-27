@@ -135,22 +135,18 @@
     </div>
   </div>
 
-  <!-- ============ 登录弹窗 ============ -->
+  <!-- ============ 登录弹窗（第三方一键登录，去掉手机号）============ -->
   <div id="loginModal" class="modal hidden">
     <div class="modal-card">
-      <h3>📱 登录知卡</h3>
-      <p id="loginHint" class="modal-sub">手机号登录，未注册将自动创建账号</p>
-      <div id="loginPhoneWrap">
-        <input id="loginPhone" class="text-input" type="tel" maxlength="11" placeholder="请输入手机号" inputmode="numeric" />
-        <button id="loginSendBtn" class="primary-btn block">获取验证码</button>
+      <button id="closeLogin" class="modal-close">✕</button>
+      <h3>🔑 登录知卡</h3>
+      <p id="loginHint" class="modal-sub">选择一个方式登录，未注册将自动创建账号</p>
+      <div class="oauth-list">
+        <button class="oauth-btn wechat" id="loginWechat"><span class="oauth-ico">💬</span><span>微信登录</span></button>
+        <button class="oauth-btn douyin" id="loginDouyin"><span class="oauth-ico">🎵</span><span>抖音登录</span></button>
+        <button class="oauth-btn xiaohongshu" id="loginXiaohongshu"><span class="oauth-ico">📕</span><span>小红书登录</span></button>
       </div>
-      <div id="loginCodeWrap" class="hidden">
-        <input id="loginCode" class="text-input" type="tel" maxlength="6" placeholder="请输入 6 位验证码" inputmode="numeric" />
-        <button id="loginCodeBtn" class="primary-btn block">登录 / 注册</button>
-        <div id="devCode" class="dev-code hidden"></div>
-      </div>
-      <button id="closeLogin" class="text-btn">取消</button>
-      <div class="login-steps"><span id="loginStep">1</span>/2</div>
+      <p class="modal-tip">MVP 版本：一键快捷登录，后续接入各平台官方授权</p>
     </div>
   </div>
 

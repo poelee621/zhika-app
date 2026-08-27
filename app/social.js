@@ -47,6 +47,18 @@
       this.setUser(d.user);
       return d.user;
     },
+    // 第三方一键登录（MVP 伪登录：前端生成稳定 openid，后端按 provider:openid 建/取用户）
+    async thirdLogin(provider) {
+      let openid = localStorage.getItem('zhika_openid_' + provider);
+      if (!openid) {
+        openid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('o' + Date.now() + Math.random().toString(16).slice(2));
+        localStorage.setItem('zhika_openid_' + provider, openid);
+      }
+      const d = await this.post('/api/auth/third', { provider, openid });
+      this.setToken(d.token);
+      this.setUser(d.user);
+      return d.user;
+    },
     logout() { this.setToken(''); this.setUser(''); },
     me() { return this.get('/api/me').then(d => { this.setUser(d.user); return d.user; }); },
     updateMe(patch) {

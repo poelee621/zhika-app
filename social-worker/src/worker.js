@@ -177,6 +177,27 @@ async function handle(req, env) {
     return json({ ok: true, token, user: publicUser(user) });
   }
 
+  // ---- 第三方一键登录（MVP 伪登录：不校验真 token，按 provider+openid 建/取用户）----
+  if (method === 'POST' && path === '/api/auth/third') {
+    const body = await req.json().catch(() => ({}));
+    const provider = String(body.provider || '').trim();
+    const openid = String(body.openid || '').trim();
+    if (!['wechat', 'douyin', 'xiaohongshu'].includes(provider)) return fail('不支持的登录方式');
+    if (!openid) return fail('缺少第三方标识');
+    const thirdId = provider + ':' + openid;
+    let user = await env.DB.prepare('SELECT * FROM users WHERE phone = ?').bind(thirdId).first();
+    if (!user) {
+      const id = uid();
+      const names = { wechat: '微信用户', douyin: '抖音用户', xiaohongshu: '小红书用户' };
+      const nickname = (names[provider] || '知友') + Math.random().toString(36).slice(2, 6);
+      await env.DB.prepare('INSERT INTO users (id, phone, nickname, avatar_id, bio, created_at) VALUES (?,?,?,?,?,?)')
+        .bind(id, thirdId, nickname, null, '', now()).run();
+      user = { id, phone: thirdId, nickname, avatar_id: null, bio: '', created_at: now() };
+    }
+    const token = await signJWT({ sub: user.id, phone: thirdId, exp: now() + 60 * 60 * 24 * 30 }, env.JWT_SECRET);
+    return json({ ok: true, token, user: publicUser(user) });
+  }
+
   const me = await auth(env, req);
   const needLogin = (fn) => { if (!me) return fail('请先登录', 401); return fn(); };
 
