@@ -48,3 +48,5 @@ new_log.txt
 p12_b64.txt
 pubkey.json
 _browser_test/
+worker/tmp/
+server.log
