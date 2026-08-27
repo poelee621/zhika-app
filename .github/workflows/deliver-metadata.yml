@@ -58,7 +58,8 @@ jobs:
         run: |
           GEM=$(gem contents fastlane | grep 'deliver/lib/deliver/upload_metadata.rb' | head -1)
           echo "patching: $GEM"
-          python3 - "$GEM" << 'PY'
+          # gem 是 sudo 装的（系统目录），python 写文件必须 sudo
+          sudo python3 - "$GEM" << 'PY'
           import sys
           path = sys.argv[1]
           with open(path, encoding='utf-8') as f:
