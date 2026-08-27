@@ -6,3 +6,5 @@ submit_for_review true
 automatic_release false
 force true
 overwrite_screenshots true
+# API Key 模式不支持 In-app purchases 的 precheck（会直接崩），关掉
+precheck_include_in_app_purchases false
