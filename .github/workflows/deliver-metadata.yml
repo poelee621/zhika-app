@@ -63,19 +63,23 @@ jobs:
           path = sys.argv[1]
           with open(path, encoding='utf-8') as f:
               src = f.read()
-          old = """    def review_attachment_file(version)
-      app_store_review_detail = version.fetch_app_store_review_detail
-      app_store_review_attachments = app_store_review_detail.app_store_review_attachments || []"""
-          new = """    def review_attachment_file(version)
-      # PATCHED for fastlane/fastlane#20538: 首版 App 无 appStoreReviewDetail 时
-      # fetch_app_store_review_detail 抛 "No data" 且无 rescue，直接崩。包上 rescue。
-      app_store_review_detail = begin
-        version.fetch_app_store_review_detail
-      rescue => e
-        UI.verbose("No app store review detail yet (patched): #{e.message}")
-        nil
-      end
-      app_store_review_attachments = (app_store_review_detail ? app_store_review_detail.app_store_review_attachments : []) || []"""
+          old = (
+              "    def review_attachment_file(version)\n"
+              "      app_store_review_detail = version.fetch_app_store_review_detail\n"
+              "      app_store_review_attachments = app_store_review_detail.app_store_review_attachments || []"
+          )
+          new = (
+              "    def review_attachment_file(version)\n"
+              "      # PATCHED for fastlane/fastlane#20538: 首版 App 无 appStoreReviewDetail 时\n"
+              "      # fetch_app_store_review_detail 抛 No data 且无 rescue，直接崩。包上 rescue。\n"
+              "      app_store_review_detail = begin\n"
+              "        version.fetch_app_store_review_detail\n"
+              "      rescue => e\n"
+              "        UI.verbose(\"No app store review detail yet (patched): #{e.message}\")\n"
+              "        nil\n"
+              "      end\n"
+              "      app_store_review_attachments = (app_store_review_detail ? app_store_review_detail.app_store_review_attachments : []) || []"
+          )
           if old in src:
               src = src.replace(old, new)
               with open(path, 'w', encoding='utf-8') as f:
@@ -83,7 +87,6 @@ jobs:
               print("PATCH OK: review_attachment_file now rescues No data")
           else:
               print("WARN: pattern not found, gem may already be patched or version differs")
-              print("grep check:")
               for i, line in enumerate(src.splitlines(), 1):
                   if 'review_attachment_file' in line or 'fetch_app_store_review_detail' in line:
                       print(f"  {i}: {line.strip()}")
