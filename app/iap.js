@@ -7,6 +7,8 @@ const IAP = {
   API_KEY: 'test_cHieRhZHRzWrOeWsJzaDRCwkpWx', // RevenueCat 测试公钥；上架前换成生产 key
   PRODUCT_IDS: { monthly: 'zhika_pro_monthly', yearly: 'zhika_pro_yearly' }, // 月度/年度商品 ID
   ENTITLEMENT: 'pro',               // RevenueCat 中 entitlement 标识
+  // 展示价格（RevenueCat 有货时用商店价，否则用此 fallback）
+  PRICES: { monthly: '¥18/月', yearly: '¥128/年' },
   _ready: false,
   _plugin() {
     const C = window.Capacitor;
@@ -24,11 +26,14 @@ const IAP = {
     const pkgs = offerings?.current?.availablePackages || [];
     return pkgs.find(x => x.product?.identifier === id) || pkgs[0] || null;
   },
-  async price() {
-    const p = this._plugin(); if (!p || !this._ready) return '';
-    try { const { offerings } = await p.getOfferings(); const pkg = this._pick(offerings);
-      return pkg ? pkg.product.priceString : ''; }
-    catch (e) { return ''; }
+  // 展示价格文案：商店有货用商店价；否则用写死价
+  async priceText(plan) {
+    const p = this._plugin(); let storePrice = '';
+    if (p && this._ready) {
+      try { const { offerings } = await p.getOfferings(); const pkg = this._pick(offerings, plan); storePrice = pkg ? pkg.product.priceString : ''; }
+      catch (e) { storePrice = ''; }
+    }
+    return storePrice || this.PRICES[plan] || '';
   },
   async purchase(plan) {
     const p = this._plugin(); if (!p || !this._ready) return false;
@@ -58,6 +63,7 @@ const IAP = {
   }
 };
 
-// 真实环境下自动初始化；会员页若有价格位则展示
+// 真实环境下自动初始化；预取价格文本
 IAP.init();
-IAP.price().then(pr => { const el = document.getElementById('priceHint'); if (el && pr) el.textContent = '现价 ' + pr; });
+IAP.priceText('monthly').then(pr => { window.__zhikaPrices = window.__zhikaPrices || {}; window.__zhikaPrices.monthly = pr; });
+IAP.priceText('yearly').then(pr => { window.__zhikaPrices = window.__zhikaPrices || {}; window.__zhikaPrices.yearly = pr; });

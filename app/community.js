@@ -534,7 +534,7 @@
       const list = $('#pubImgs');
       list.innerHTML = '';
       this._publishUrls.forEach((u, i) => {
-        const label = i === 0 ? '封面' : ((set && set.cards && set.cards[i - 1] && set.cards[i - 1].label) || '卡' + i);
+        const label = i === 0 ? '封面' : '补充观点';
         const item = document.createElement('div');
         item.className = 'pub-img checked';
         item.innerHTML = `<img src="${u}" alt=""/><span class="pub-cap">${label}</span>`;

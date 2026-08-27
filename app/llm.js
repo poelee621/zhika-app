@@ -135,43 +135,33 @@ ${typeGuide}
 注意：不要返回任何 HTML 字段，4 张图文卡统一用 cardLines 渲染为大字海报。`;
   },
 
-  // ===== 知识卡片提取（知卡核心）：长文/视频文案/截图OCR → 结构化知识卡 =====
+  // ===== 知识卡片提取（知卡核心）：长文/视频文案/截图OCR → 1~2 张核心卡片 =====
+  // 不套固定模板（金句/概念/对比/方法论/时间线/数据），由 AI 判断内容含金量，提炼 1~2 张大字海报
   buildCardsPrompt(text, opts) {
     opts = opts || {};
     const src = opts.source ? `来源：${opts.source}。\n` : '';
-    const n = opts.count || 6;
     return `${src}下面是一段待提炼的内容：
 ===== 内容开始 =====
 ${text}
 ===== 内容结束 =====
 
-请从这段内容中提炼 ${n} 张左右「知识卡片」，覆盖多种卡片类型。要求：
-1. 每张卡片必须来自原文真实有价值的信息，禁止编造、禁止正确但无用的废话。
-2. 卡片类型从以下六种中混合选取：
-   - quote（金句）：原文中最犀利/最有启发的一句话或观点。
-   - concept（概念）：一个关键概念/术语，用大白话解释它是什么、解决什么问题。
-   - compare（对比）：两个容易混淆事物的差异，用「A vs B：…」结构。
-   - method（方法论）：一个可照做的步骤/清单/框架。
-   - timeline（时间线）：一个事件/技术发展脉络，按时间顺序列出关键节点。
-   - data（数据）：一个有冲击力的数字/事实，并说明它意味着什么。
-3. 每张卡片 content 精炼到适合「大字海报」呈现（金句≤40字，其他≤80字），但信息完整不失真。
-4. 卡片顺序：先金句/核心观点，再概念/方法/对比，最后数据/时间线收尾。
+请把这段内容提炼成 1~2 张「核心观点大字卡片」，用于发朋友圈/小红书等社交平台。要求：
+1. 数量由内容含金量决定：内容短就 1 张，内容足够丰富最多 2 张；不要为凑数硬拆。
+2. 每张卡 content = 从原文提炼出的一句核心观点/最有价值的信息（精炼、有冲击力、可直接做大字海报，≤50字），必须忠实于原文，禁止编造。
+3. 第 1 张放整段最核心的观点，第 2 张（如有）放次重要的补充观点或关键数据。
+4. 禁止使用「金句、概念、对比、方法论、时间线、数据」这类分类标签，卡片本身就是观点本身。
 
 严格只返回一个 JSON 对象，不要任何解释或 markdown 代码块：
 {
   "theme": "从下面 10 个英文 key 里选一个最贴合本内容的：tech(科技) / finance(财经) / emotion(情感) / food(美食) / travel(旅行) / career(职场) / knowledge(知识) / health(健康) / fashion(时尚) / life(生活)",
-  "title": "给这套卡片起一个贴切的笔记标题（具体，非套话）",
-  "summary": "一句话概括这段内容的核心主旨（≤30字）",
+  "title": "给这张卡起一个贴切标题（≤14字，具体、非套话）",
+  "summary": "一句话概括核心主旨（≤25字）",
   "cards": [
-    {"type":"quote","label":"金句","content":"..."},
-    {"type":"concept","label":"概念","content":"..."},
-    {"type":"compare","label":"对比","content":"..."},
-    {"type":"method","label":"方法论","content":"..."},
-    {"type":"timeline","label":"时间线","content":"..."},
-    {"type":"data","label":"数据","content":"..."}
+    {"content": "核心观点 1（≤50字）"},
+    {"content": "补充观点 2（≤50字，可选）"}
   ]
 }
-注意：不要返回任何 HTML 字段，卡片由客户端渲染。`;
+注意：不要返回任何 HTML 字段，卡片由客户端渲染。cards 最多 2 张。`;
   },
 
   async call(plat, style, topic) {
@@ -306,8 +296,9 @@ ${text}
           theme: obj.theme || 'knowledge',
           cards: obj.cards.map((x, i) => ({
             id: 'c' + Date.now() + '_' + i,
-            type: x.type || 'concept',
-            label: x.label || ({ quote:'金句', concept:'概念', compare:'对比', method:'方法论', timeline:'时间线', data:'数据' }[x.type] || '卡片'),
+            // 新结构无 type/label：统一为核心观点卡；兼容老结构（社区历史数据）
+            type: x.type || 'core',
+            label: x.label || '',
             content: String(x.content || '').trim()
           })).filter(x => x.content)
         };

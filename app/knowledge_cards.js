@@ -53,8 +53,8 @@ const KnowledgeCards = {
     ctx.fillText(text, x + 32, y);
   },
 
-  // 0) 封面卡（渐变底 + 大标题 + 摘要）
-  _cover(ctx, set, t) {
+  // 0) 封面卡（渐变底 + 大标题 + 摘要 + 首条核心观点大字）
+  _cover(ctx, set, t, first) {
     const g = ctx.createLinearGradient(0, 0, this.W, this.H);
     g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
@@ -64,25 +64,72 @@ const KnowledgeCards = {
 
     ctx.fillStyle = t.accent; ctx.font = '700 36px ' + this.FONT;
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(t.icon + '  ' + t.label + ' · 知识卡片', 84, 110);
+    ctx.fillText(t.icon + '  ' + t.label + ' · 知卡', 84, 110);
 
     const title = set.title || '知识卡片';
     ctx.fillStyle = this.WHITE; ctx.font = '800 76px ' + this.FONT;
     const tlines = this._wrap(ctx, title, this.W - 168).slice(0, 3);
-    let y = 320;
+    let y = 280;
     tlines.forEach(l => { ctx.fillText(l, 84, y); y += 96; });
 
     if (set.summary) {
       ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = '500 38px ' + this.FONT;
       const slines = this._wrap(ctx, set.summary, this.W - 168).slice(0, 2);
-      y += 20;
+      y += 14;
       slines.forEach(l => { ctx.fillText(l, 84, y); y += 56; });
     }
 
-    const n = (set.cards || []).length;
-    ctx.fillStyle = t.accent; ctx.font = '600 36px ' + this.FONT;
+    // 首条核心观点：引号大字（重点呈现）
+    const firstText = (first && first.content) || '';
+    if (firstText) {
+      y = Math.max(y + 44, 620);
+      ctx.fillStyle = t.accent; ctx.font = '700 72px ' + this.FONT;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('“', 84, y);
+      ctx.fillStyle = this.WHITE; ctx.font = '800 56px ' + this.FONT;
+      const flines = this._wrap(ctx, firstText.replace(/^“|”$/g, ''), this.W - 240).slice(0, 6);
+      let fy = y + 16;
+      flines.forEach(l => { ctx.fillText(l, 176, fy); fy += 82; });
+      ctx.fillStyle = t.accent; ctx.font = '700 72px ' + this.FONT;
+      ctx.fillText('”', 84, fy + 8);
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '500 30px ' + this.FONT;
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText('共 ' + n + ' 张 · 可逐张保存分享', this.W - 84, this.H - 110);
+    ctx.fillText('知卡 · 把内容变成知识卡片', this.W - 84, this.H - 64);
+  },
+
+  // 补充观点卡（渐变底大字，第 2 页，最多 3 条剩余观点）
+  _core(ctx, set, t, rest) {
+    const g = ctx.createLinearGradient(0, 0, 0, this.H);
+    g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
+    ctx.fillStyle = 'rgba(255,255,255,.12)';
+    ctx.beginPath(); ctx.arc(920, 1180, 150, 0, 7); ctx.fill();
+
+    ctx.fillStyle = t.accent; ctx.font = '700 36px ' + this.FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(t.icon + '  ' + t.label + ' · 知卡', 84, 110);
+
+    const items = rest.slice(0, 3);
+    let y = 280;
+    items.forEach((it, i) => {
+      ctx.fillStyle = t.accent;
+      ctx.beginPath(); ctx.arc(124, y + 34, 28, 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '800 32px ' + this.FONT;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), 124, y + 38);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillStyle = this.WHITE; ctx.font = '800 48px ' + this.FONT;
+      const lines = this._wrap(ctx, String(it.content || ''), this.W - 240).slice(0, 4);
+      let ly = y;
+      lines.forEach(l => { ctx.fillText(l, 196, ly); ly += 66; });
+      y = ly + 46;
+    });
+
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '500 30px ' + this.FONT;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillText('知卡 · 把内容变成知识卡片', this.W - 84, this.H - 64);
   },
 
   // 金句卡（暗底大字）
@@ -230,21 +277,22 @@ const KnowledgeCards = {
     }[type] || this._concept.bind(this);
   },
 
-  // 生成整套：第 0 张封面 + 各知识卡，返回 [dataURL,...]
+  // 生成整套：第 0 张封面（含首条核心观点）+ 第 1 张补充观点卡（如有），共 1~2 张
   generateSet(set, opts) {
     const t = this._theme((opts && opts.theme) || set.theme);
     const out = [];
-    // 封面
+    const cards = Array.isArray(set.cards) ? set.cards : [];
+    // 封面：大标题 + 摘要 + 首条核心观点
     let c = document.createElement('canvas'); c.width = this.W; c.height = this.H;
     let x = c.getContext('2d'); x.textBaseline = 'top';
-    this._cover(x, set, t); out.push(c.toDataURL('image/jpeg', 0.92));
-    // 各卡
-    (set.cards || []).forEach(card => {
+    this._cover(x, set, t, cards[0]); out.push(c.toDataURL('image/jpeg', 0.92));
+    // 补充观点（最多 1 张，合并剩余 2~3 条）
+    if (cards.length > 1) {
       const cc = document.createElement('canvas'); cc.width = this.W; cc.height = this.H;
       const cx = cc.getContext('2d'); cx.textBaseline = 'top';
-      this._router(card.type)(cx, card, t);
+      this._core(cx, set, t, cards.slice(1));
       out.push(cc.toDataURL('image/jpeg', 0.92));
-    });
+    }
     return out;
   }
 };

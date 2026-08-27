@@ -81,7 +81,7 @@
     if (!text || text.trim().length < 20) { setStatus('内容太短，至少 20 字', true); return; }
     setStatus('AI 正在提炼知识卡片…（约 10-30 秒）', true);
     try {
-      const set = await LLM.callCards(text, { source: source || '', count: 6 });
+      const set = await LLM.callCards(text, { source: source || '' });
       lastSet = set;
       if (!isVip()) bumpGen();
       renderResult(set);
@@ -108,7 +108,7 @@
   function paintCards(list, urls, set) {
     list.innerHTML = '';
     urls.forEach((u, i) => {
-      const label = i === 0 ? '封面' : (set.cards[i - 1] && set.cards[i - 1].label) || '卡片';
+      const label = i === 0 ? '封面' : '补充观点';
       const item = document.createElement('div');
       item.className = 'card-item';
       item.innerHTML = `<img src="${u}" alt="card"/><span class="cap">${label}</span>`;
@@ -348,12 +348,21 @@
 
   // ===== 会员 =====
   function isWeb() { return !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+  function vipPrices() {
+    const w = window.__zhikaPrices || {};
+    return { monthly: w.monthly || '¥18/月', yearly: w.yearly || '¥128/年' };
+  }
   function openVip(msg) {
     $('#vipModal').classList.remove('hidden');
+    const p = vipPrices();
+    $('#buyMonthly').textContent = '按月订阅 ' + p.monthly;
+    $('#buyYearly').textContent = '按年订阅（更划算）' + p.yearly;
     if (msg) {
       $('#priceHint').textContent = msg;
     } else if (isWeb()) {
       $('#priceHint').textContent = 'Web 预览版暂不支持购买，请在 iOS App 内升级 PRO';
+    } else {
+      $('#priceHint').textContent = '';
     }
   }
   $('#vipBtn').addEventListener('click', () => openVip(''));
@@ -363,9 +372,25 @@
     $('#priceHint').textContent = '订阅仅在 iOS App 内可用（Web 预览版）';
     return true;
   }
-  $('#buyMonthly').addEventListener('click', () => { if (webBlockBuy()) return; IAP.purchase('monthly').then(ok => { if (ok) { refreshVip(); $('#vipModal').classList.add('hidden'); } }); });
-  $('#buyYearly').addEventListener('click', () => { if (webBlockBuy()) return; IAP.purchase('yearly').then(ok => { if (ok) { refreshVip(); $('#vipModal').classList.add('hidden'); } }); });
-  $('#restoreBtn').addEventListener('click', () => { if (webBlockBuy()) return; IAP.restore().then(ok => { if (ok) refreshVip(); }); });
+  function tryBuy(plan, label) {
+    if (webBlockBuy()) return;
+    $('#priceHint').textContent = '正在拉起 App Store 购买…';
+    IAP.purchase(plan).then(ok => {
+      if (ok) { refreshVip(); $('#vipModal').classList.add('hidden'); }
+      else {
+        // 测试 key / 未上架 / 插件未配置 → 给明确反馈而不是静默
+        $('#priceHint').textContent = IAP.isConfigured()
+          ? '购买未完成（可检查 App Store 登录或稍后重试）'
+          : 'App 尚未上架，正式版上线后即可订阅 ' + label;
+      }
+    });
+  }
+  $('#buyMonthly').addEventListener('click', () => tryBuy('monthly', vipPrices().monthly));
+  $('#buyYearly').addEventListener('click', () => tryBuy('yearly', vipPrices().yearly));
+  $('#restoreBtn').addEventListener('click', () => {
+    if (webBlockBuy()) return;
+    IAP.restore().then(ok => { if (ok) refreshVip(); else $('#priceHint').textContent = '未找到可恢复的订阅'; });
+  });
 
   // ===== 初始化 =====
   refreshVip();
