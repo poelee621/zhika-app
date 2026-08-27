@@ -65,6 +65,7 @@
 
   // ===== 生成流程 =====
   let lastSet = null;
+  let currentTheme = null;
   async function produceCards(text, source) {
     if (!isVip() && genCount() >= FREE_DAILY) {
       openVip('今日免费次数已用完，升级 PRO 无限生成');
@@ -88,8 +89,17 @@
     $('#result').classList.remove('hidden');
     $('#resultTitle').textContent = set.title || '知识卡片';
     $('#resultSummary').textContent = set.summary || '';
+    currentTheme = set.theme || 'knowledge';
     const list = $('#cardList'); list.innerHTML = '';
-    const urls = KnowledgeCards.generateSet(set);
+    const urls = KnowledgeCards.generateSet(set, { theme: currentTheme });
+    paintCards(list, urls, set);
+    $('#result').dataset.urls = JSON.stringify(urls);
+    renderThemeBar();
+  }
+
+  // 把 DataURL 列表画进卡片网格（封面 + 各卡）
+  function paintCards(list, urls, set) {
+    list.innerHTML = '';
     urls.forEach((u, i) => {
       const label = i === 0 ? '封面' : (set.cards[i - 1] && set.cards[i - 1].label) || '卡片';
       const item = document.createElement('div');
@@ -97,7 +107,69 @@
       item.innerHTML = `<img src="${u}" alt="card"/><span class="cap">${label}</span>`;
       list.appendChild(item);
     });
+  }
+
+  // 主题切换条：列出 CoverEngine 的全部主题，点击即时换配色重渲染
+  function renderThemeBar() {
+    const bar = $('#themeBar'); if (!bar) return;
+    const themes = (window.CoverEngine && window.CoverEngine.THEMES) || {};
+    const keys = Object.keys(themes);
+    if (!keys.length) { bar.classList.add('hidden'); return; }
+    bar.classList.remove('hidden'); bar.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'theme-label'; label.textContent = '主题配色：';
+    bar.appendChild(label);
+    keys.forEach(k => {
+      const t = themes[k];
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'theme-chip' + (k === currentTheme ? ' active' : '');
+      chip.textContent = t.icon + ' ' + t.label;
+      chip.style.background = k === currentTheme ? t.accent : '#fff';
+      chip.style.color = k === currentTheme ? '#1a1a1a' : '#555';
+      chip.style.borderColor = t.accent;
+      chip.onclick = () => applyTheme(k);
+      bar.appendChild(chip);
+    });
+  }
+
+  function applyTheme(theme) {
+    if (!lastSet) return;
+    currentTheme = theme;
+    const urls = KnowledgeCards.generateSet(lastSet, { theme });
+    paintCards($('#cardList'), urls, lastSet);
     $('#result').dataset.urls = JSON.stringify(urls);
+    renderThemeBar();
+    const name = ((window.CoverEngine.THEMES[theme] || {}).label) || theme;
+    setStatus('已切换主题：' + name, true);
+    setTimeout(() => setStatus('', false), 1800);
+  }
+
+  // 复制全部文案到剪贴板
+  function buildCopyText(set) {
+    if (!set) return '';
+    let txt = (set.title || '知识卡片') + '\n';
+    if (set.summary) txt += set.summary + '\n';
+    txt += '\n';
+    (set.cards || []).forEach(c => { txt += (c.label || '卡片') + '：' + (c.content || '') + '\n\n'; });
+    txt += '—— 知卡 ZhiCard · 把内容变成你的知识卡片';
+    return txt.trim();
+  }
+  async function copyText() {
+    if (!lastSet) return;
+    const txt = buildCopyText(lastSet);
+    try {
+      await navigator.clipboard.writeText(txt);
+      setStatus('已复制全部文案到剪贴板', true);
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); setStatus('已复制全部文案到剪贴板', true); }
+      catch (_) { setStatus('复制失败，请手动选择文字', true); }
+      ta.remove();
+    }
+    setTimeout(() => setStatus('', false), 2000);
   }
 
   // ===== 保存全部图片 =====
@@ -112,6 +184,9 @@
     setStatus('已触发下载（iOS 可长按图片保存到相册）', true);
     setTimeout(() => setStatus('', false), 2500);
   });
+
+  // ===== 复制全部文案 =====
+  $('#copyBtn').addEventListener('click', copyText);
 
   // ===== 加入复习 =====
   $('#reviewAddBtn').addEventListener('click', () => {

@@ -232,7 +232,7 @@ const KnowledgeCards = {
 
   // 生成整套：第 0 张封面 + 各知识卡，返回 [dataURL,...]
   generateSet(set, opts) {
-    const t = this._theme(set.theme);
+    const t = this._theme((opts && opts.theme) || set.theme);
     const out = [];
     // 封面
     let c = document.createElement('canvas'); c.width = this.W; c.height = this.H;

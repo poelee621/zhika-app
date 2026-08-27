@@ -84,6 +84,16 @@ body {
 .card-item img { width: 100%; display: block; }
 .card-item .cap { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,.5); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
 
+.theme-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0 4px; }
+.theme-label { font-size: 13px; color: var(--sub); }
+.theme-chip {
+  font-size: 13px; padding: 6px 12px; border-radius: 999px;
+  border: 1.5px solid var(--line); background: #fff; color: #555; cursor: pointer;
+  transition: transform .12s ease;
+}
+.theme-chip:active { transform: scale(.94); }
+.theme-chip.active { font-weight: 700; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+
 .review { margin-top: 28px; }
 .review h3 { font-size: 17px; margin: 0 0 12px; }
 .pill { background: var(--brand); color: #fff; font-size: 12px; padding: 1px 9px; border-radius: 999px; margin-left: 6px; }
