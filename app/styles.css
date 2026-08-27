@@ -111,3 +111,16 @@ body {
 .price { font-size: 16px; font-weight: 700; color: var(--brand); min-height: 22px; margin: 0 0 16px; }
 .modal-card .primary-btn, .modal-card .ghost-btn { margin-top: 10px; }
 .modal-card .text-btn { margin-top: 14px; }
+
+/* 视觉隐藏但仍在渲染树：iOS WKWebView 对 display:none 的 file input 调 .click() 不弹选择器，
+   用 opacity:0 + 绝对定位（非 display:none / visibility:hidden）可正常触发系统选图器 */
+.visually-hidden {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  pointer-events: none;
+}
