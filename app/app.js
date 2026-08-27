@@ -50,14 +50,22 @@
     });
   });
 
-  // ===== 选图（真机用 Camera，web 用 file input）=====
+  // ===== 选图（真机必须用 Capacitor Camera 原生桥；WKWebView 的 file input 在 iOS 上不弹选择器）=====
   async function pickImage() {
     const native = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
-    if (native && window.Capacitor.Plugins && window.Capacitor.Plugins.Camera) {
-      const { Camera } = window.Capacitor.Plugins;
-      const photo = await Camera.getPhoto({ quality: 80, resultType: 'base64', source: 'PROMPT' });
-      return photo.base64String;
+    if (native) {
+      if (!(window.Capacitor.Plugins && window.Capacitor.Plugins.Camera)) {
+        throw new Error('相册组件未加载，请更新到最新 TestFlight 版本后重试');
+      }
+      try {
+        const { Camera } = window.Capacitor.Plugins;
+        const photo = await Camera.getPhoto({ quality: 80, resultType: 'base64', source: 'PHOTOLIBRARY' });
+        return photo.base64String;
+      } catch (e) {
+        throw new Error('调用系统相册失败：' + (e && e.message ? e.message : e) + '（请更新到最新版本后重试）');
+      }
     }
+    // web 端走 file input（桌面/移动浏览器均支持）
     return await new Promise((resolve, reject) => {
       const inp = $('#fileInput');
       inp.onchange = () => {
