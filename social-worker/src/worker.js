@@ -236,8 +236,9 @@ async function handle(req, env) {
     const id = uid();
     const passwordHash = await hashPassword(tempPassword);
     const nickname = '知友' + userId.slice(-4);
-    await env.DB.prepare('INSERT INTO users (id, user_id, password_hash, nickname, avatar_id, bio, created_at) VALUES (?,?,?,?,?,?,?)')
-      .bind(id, userId, passwordHash, nickname, null, '', now()).run();
+    // 线上旧表 users.phone 为 NOT NULL 且有 UNIQUE 索引；新流程不采集手机号，用唯一非空占位兼容
+    await env.DB.prepare('INSERT INTO users (id, user_id, password_hash, nickname, avatar_id, bio, phone, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .bind(id, userId, passwordHash, nickname, null, '', 'u_' + userId, now()).run();
     const user = await env.DB.prepare('SELECT id, user_id, nickname, avatar_id, bio, created_at FROM users WHERE id = ?').bind(id).first();
     const token = await signJWT({ sub: id, uid: userId, exp: now() + 60 * 60 * 24 * 30 }, env.JWT_SECRET);
     return json({ ok: true, token, user: publicUser(user), user_id: userId, temp_password: tempPassword });
@@ -278,8 +279,9 @@ async function handle(req, env) {
     const id = uid();
     const passwordHash = await hashPassword(password);
     const nickname = userId;
-    await env.DB.prepare('INSERT INTO users (id, user_id, password_hash, nickname, avatar_id, bio, created_at) VALUES (?,?,?,?,?,?,?)')
-      .bind(id, userId, passwordHash, nickname, null, '', now()).run();
+    // 线上旧表 users.phone 为 NOT NULL 且有 UNIQUE 索引；新流程不采集手机号，用唯一非空占位兼容
+    await env.DB.prepare('INSERT INTO users (id, user_id, password_hash, nickname, avatar_id, bio, phone, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .bind(id, userId, passwordHash, nickname, null, '', 'u_' + userId, now()).run();
     const user = await env.DB.prepare('SELECT id, user_id, nickname, avatar_id, bio, created_at FROM users WHERE id = ?').bind(id).first();
     const token = await signJWT({ sub: id, uid: userId, exp: now() + 60 * 60 * 24 * 30 }, env.JWT_SECRET);
     return json({ ok: true, token, user: publicUser(user) });
