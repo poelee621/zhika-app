@@ -321,19 +321,54 @@
   });
 
   // ===== 摄取：图片（用 label[for=fileInput] 原生唤起 iOS 选图器，不依赖原生 Camera 插件）=====
+  // 选图后先压成 ≤1280px 的 JPEG 再传，避免原图 4~10MB 拖慢 GLM-4V（OCR 超时主因）
+  function compressImageToBase64(file, maxDim, quality) {
+    maxDim = maxDim || 1280; quality = quality || 0.85;
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          const scale = Math.min(1, maxDim / Math.max(width, height));
+          width = Math.round(width * scale); height = Math.round(height * scale);
+          const cv = document.createElement('canvas');
+          cv.width = width; cv.height = height;
+          cv.getContext('2d').drawImage(img, 0, 0, width, height);
+          URL.revokeObjectURL(url);
+          // 导出 JPEG，去掉前缀 data:image/jpeg;base64,
+          const dataUrl = cv.toDataURL('image/jpeg', quality);
+          resolve(String(dataUrl).split(',')[1]);
+        } catch (e) { reject(e); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片解码失败')); };
+      img.src = url;
+    });
+  }
+
   (function setupImageUpload() {
     const inp = $('#fileInput');
     if (!inp) return;
     inp.addEventListener('change', async () => {
       const f = inp.files && inp.files[0];
       if (!f) return;
-      setStatus('正在识别图中文字（OCR）…', true);
+      setStatus('正在压缩图片并识别文字（OCR）…', true);
       try {
-        const b64 = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result).split(',')[1]);
-          r.onerror = reject; r.readAsDataURL(f);
-        });
+        let b64;
+        try {
+          b64 = await compressImageToBase64(f, 1280, 0.85);
+        } catch (e) {
+          // 压缩失败兜底：直接读原图（仍可能慢/超时，但至少不报错卡死）
+          b64 = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result).split(',')[1]);
+            r.onerror = reject; r.readAsDataURL(f);
+          });
+        }
+        if (b64.length > 1800 * 1024) {
+          // 仍过大（超大长图）：再压一轮到 900px
+          try { b64 = await compressImageToBase64(f, 900, 0.8); } catch (_) {}
+        }
         const r = await INGEST.ocr(b64);
         const text = (r && r.text) || '';
         if (!text.trim()) {

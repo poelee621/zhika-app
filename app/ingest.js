@@ -65,14 +65,14 @@ const INGEST = {
     return await this._post('/transcribe', { url });
   },
 
-  // 图片 OCR（电子书截图等）
+  // 图片 OCR（电子书截图等）—— 视觉模型慢，超时放宽到 60s
   async ocr(base64) {
     if (!this._available()) {
       const e = new Error('GATEWAY未配置');
       e.kind = 'config';
       throw e;
     }
-    return await this._post('/ocr', { image: base64 });
+    return await this._post('/ocr', { image: base64 }, 60000);
   }
 };
 
@@ -84,6 +84,8 @@ INGEST.explainError = function (e) {
   const status = e && e.status, kind = e && e.kind;
   if (kind === 'config')    return { title: '未配置网关', canRetry: false };
   if (kind === 'timeout')   return { title: '⏱ 抓取超时',      body: '目标网站响应太慢，可稍后重试，或复制正文用「文本」模式粘贴。', canRetry: true };
+  if (kind === 'vision_timeout') return { title: '⏱ 图片识别超时', body: '图中文字太多或网络较慢，已自动重试仍超时。可换清晰度更高/更方正的截图，或用「文本」模式直接粘贴。', canRetry: true };
+  if (kind === 'vision_error')   return { title: '🔍 识别服务异常', body: '视觉模型暂时不可用，请稍后重试，或改用「文本」模式粘贴正文。', canRetry: true };
   if (kind === 'network')   return { title: '🌐 网络异常',      body: '无法连接摄取网关，请检查网络后重试。', canRetry: true };
   if (kind === 'dns')       return { title: '🌐 域名解析失败',  body: '目标网站地址无法访问，可能是链接拼错或站点已下线。', canRetry: false };
   if (status === 404)       return { title: '🔗 链接已失效',    body: '目标页面不存在或已被删除，请检查链接是否完整、有效。', canRetry: false };

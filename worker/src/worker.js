@@ -96,21 +96,40 @@ async function ocr(image, env) {
   if (!key) throw new Error('未配置视觉模型(VISION_API_KEY)');
   const base = env.VISION_BASE || 'https://open.bigmodel.cn/api/paas/v4';
   const model = env.VISION_MODEL || 'glm-4v-plus';
-  const resp = await fetch(base + '/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-    body: JSON.stringify({
-      model,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: '请识别并转录这张图片中的所有文字。如果是电子书/文档/截图，请保持原文段落与顺序，不要翻译、不要概括，只输出文字内容。' },
-          { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + image } }
-        ]
-      }]
-    })
-  });
-  if (!resp.ok) throw new Error('视觉模型 ' + resp.status);
+  let resp;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 25000); // 视觉模型硬超时，避免 worker 卡死
+    resp = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: '请识别并转录这张图片中的所有文字。如果是电子书/文档/截图，请保持原文段落与顺序，不要翻译、不要概括，只输出文字内容。' },
+            { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + image } }
+          ]
+        }]
+      })
+    });
+    clearTimeout(t);
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      const err = new Error('视觉模型响应超时（25s）');
+      err.kind = 'vision_timeout'; err.status = 0;
+      throw err;
+    }
+    throw e;
+  }
+  if (!resp.ok) {
+    const err = new Error('视觉模型返回 ' + resp.status);
+    err.kind = 'vision_error'; err.status = resp.status;
+    throw err;
+  }
   const data = await resp.json();
   const text = data.choices?.[0]?.message?.content || '';
   return { text: text.trim() };
@@ -156,8 +175,17 @@ export default {
       if (request.method === 'POST' && path === '/ocr') {
         const { image } = await request.json();
         if (!image) return json({ error: 'missing image' }, 400, cors);
-        const r = await ocr(image, env);
-        return json(r, 200, cors);
+        try {
+          const r = await ocr(image, env);
+          return json(r, 200, cors);
+        } catch (e) {
+          // 视觉模型超时/错误：透传 kind/status，前端给精准提示（而非笼统 500）
+          const kind = e && e.kind || 'vision_error';
+          const status = (e && e.status) || 502;
+          const msg = (e && e.message) || String(e);
+          const code = kind === 'vision_timeout' ? 504 : (status >= 500 ? 502 : status);
+          return json({ error: msg, kind, status: code }, code, cors);
+        }
       }
 
       // ===== 订阅校验（复用 Spark）=====
