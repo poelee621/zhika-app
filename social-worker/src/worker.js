@@ -91,11 +91,46 @@ async function auth(env, req) {
 
 // ==================== 在线迁移（worker boot 一次，幂等）====================
 let migratePromise = null;
+// 无论 D1 当前是否为空，先确保 5 张表结构完整（CREATE IF NOT EXISTS 不会覆盖已有表）
+async function ensureTables(env) {
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY, user_id TEXT UNIQUE, password_hash TEXT NOT NULL DEFAULT '',
+      nickname TEXT DEFAULT '', avatar_id TEXT, bio TEXT DEFAULT '', phone TEXT, created_at INTEGER NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS cards (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT DEFAULT '', summary TEXT DEFAULT '',
+      theme TEXT DEFAULT 'knowledge', tags TEXT DEFAULT '[]', cover_id TEXT, images TEXT DEFAULT '[]',
+      cards TEXT DEFAULT '[]', like_count INTEGER DEFAULT 0, fav_count INTEGER DEFAULT 0,
+      comment_count INTEGER DEFAULT 0, created_at INTEGER NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS likes (
+      card_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (card_id, user_id)
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS favorites (
+      card_id TEXT NOT NULL, user_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (card_id, user_id)
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY, card_id TEXT NOT NULL, user_id TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS media (
+      id TEXT PRIMARY KEY, mime TEXT DEFAULT 'image/jpeg', data TEXT NOT NULL, created_at INTEGER NOT NULL
+    )`)
+  ]);
+}
 async function doMigrate(env) {
+  await ensureTables(env);
   const cols = await env.DB.prepare("PRAGMA table_info(users)").all();
   const names = new Set(cols.results.map(r => r.name));
-  if (!names.has('user_id')) await env.DB.prepare("ALTER TABLE users ADD COLUMN user_id TEXT").run();
-  if (!names.has('password_hash')) await env.DB.prepare("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''").run();
+  // 兼容旧表：补齐可能缺失的列（含 nickname/avatar_id/bio，旧版 ALTER 漏建导致 INSERT 500）
+  const addCol = async (col, type) => {
+    if (!names.has(col)) await env.DB.prepare(`ALTER TABLE users ADD COLUMN ${col} ${type}`).run();
+  };
+  await addCol('user_id', 'TEXT');
+  await addCol('password_hash', "TEXT NOT NULL DEFAULT ''");
+  await addCol('nickname', "TEXT DEFAULT ''");
+  await addCol('avatar_id', 'TEXT');
+  await addCol('bio', "TEXT DEFAULT ''");
   await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)").run();
   // 给已有的旧用户补 user_id（取 phone 后 8 位，不足用 id 前 8 位）
   const needFix = await env.DB.prepare("SELECT id, phone, user_id FROM users WHERE user_id IS NULL OR user_id = ''").all();
