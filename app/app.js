@@ -5,7 +5,11 @@
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-  // ===== 免费档每日限额（3 次）=====
+  // ===== 测试期：取消知卡 PRO 会员墙，全功能无限量使用 =====
+  // 上线付费时把此处改为 false，并在 refreshVip / produceCards 恢复会员校验
+  const TEST_UNLIMITED = true;
+
+  // ===== 免费档每日限额（测试期被 TEST_UNLIMITED 覆盖，不再拦截）=====
   const FREE_DAILY = 3;
   function genCount() {
     const d = new Date().toDateString();
@@ -19,7 +23,7 @@
     stored.date = d; stored.n = (stored.n || 0) + 1;
     localStorage.setItem('zhika_gen', JSON.stringify(stored));
   }
-  function isVip() { return localStorage.getItem('zhika_vip') === '1'; }
+  function isVip() { return TEST_UNLIMITED || localStorage.getItem('zhika_vip') === '1'; }
 
   function setStatus(msg, show) {
     const el = $('#status');
@@ -35,6 +39,12 @@
   }
 
   function refreshVip() {
+    // 测试期：彻底隐藏 PRO 升级入口与徽章，全功能无限量
+    if (TEST_UNLIMITED) {
+      $('#vipBadge').classList.add('hidden');
+      $('#vipBtn').classList.add('hidden');
+      return;
+    }
     const vip = isVip();
     $('#vipBadge').classList.toggle('hidden', !vip);
     $('#vipBtn').classList.toggle('hidden', vip);

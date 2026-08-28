@@ -211,7 +211,7 @@ async function handle(req, env) {
   // ---- 登录：检查 user_id 是否已注册（用于登录页提前提示） ----
   if (method === 'GET' && path === '/api/auth/check') {
     const userId = String(url.searchParams.get('user_id') || '').trim();
-    if (!/^\d{8}$/.test(userId)) return fail('用户ID 应为 8 位数字');
+    if (!/^[\w一-龥]{3,20}$/.test(userId)) return fail('用户名应为 3~20 位（字母/数字/中文/下划线）');
     const row = await env.DB.prepare('SELECT 1 FROM users WHERE user_id = ?').bind(userId).first();
     return json({ ok: true, exists: !!row });
   }
@@ -221,7 +221,7 @@ async function handle(req, env) {
     const body = await req.json().catch(() => ({}));
     const userId = String(body.user_id || '').trim();
     const password = String(body.password || '');
-    if (!/^\d{8}$/.test(userId)) return fail('用户ID 应为 8 位数字');
+    if (!/^[\w一-龥]{3,20}$/.test(userId)) return fail('用户名应为 3~20 位（字母/数字/中文/下划线）');
     if (!password || password.length < 6 || password.length > 32) return fail('密码长度应为 6~32 位');
     const row = await env.DB.prepare('SELECT id, user_id, password_hash, nickname, avatar_id, bio, created_at FROM users WHERE user_id = ?').bind(userId).first();
     if (!row) return fail('账号不存在');
@@ -229,6 +229,25 @@ async function handle(req, env) {
     if (!ok) return fail('密码错误');
     const token = await signJWT({ sub: row.id, uid: row.user_id, exp: now() + 60 * 60 * 24 * 30 }, env.JWT_SECRET);
     return json({ ok: true, token, user: publicUser(row) });
+  }
+
+  // ---- 注册：用户名 + 密码，自己创建账号（注册成功即自动登录） ----
+  if (method === 'POST' && path === '/api/auth/register') {
+    const body = await req.json().catch(() => ({}));
+    const userId = String(body.user_id || '').trim();
+    const password = String(body.password || '');
+    if (!/^[\w一-龥]{3,20}$/.test(userId)) return fail('用户名应为 3~20 位（字母/数字/中文/下划线）');
+    if (!password || password.length < 6 || password.length > 32) return fail('密码长度应为 6~32 位');
+    const exists = await env.DB.prepare('SELECT 1 FROM users WHERE user_id = ?').bind(userId).first();
+    if (exists) return fail('该用户名已被注册');
+    const id = uid();
+    const passwordHash = await hashPassword(password);
+    const nickname = userId;
+    await env.DB.prepare('INSERT INTO users (id, user_id, password_hash, nickname, avatar_id, bio, created_at) VALUES (?,?,?,?,?,?,?)')
+      .bind(id, userId, passwordHash, nickname, null, '', now()).run();
+    const user = await env.DB.prepare('SELECT id, user_id, nickname, avatar_id, bio, created_at FROM users WHERE id = ?').bind(id).first();
+    const token = await signJWT({ sub: id, uid: userId, exp: now() + 60 * 60 * 24 * 30 }, env.JWT_SECRET);
+    return json({ ok: true, token, user: publicUser(user) });
   }
 
   const me = await auth(env, req);

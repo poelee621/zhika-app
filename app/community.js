@@ -428,29 +428,38 @@
       } catch (e) { $('#mineSentinel').textContent = '加载失败'; }
     },
 
-    // ==================== 登录弹窗（用户ID + 密码 / 一键随机）====================
+    // ==================== 登录 / 注册弹窗（用户名 + 密码）====================
     openLogin(hint) {
-      const u = SOCIAL.user;
       $('#loginModal').classList.remove('hidden');
-      $('#loginHint').textContent = hint || '输入用户ID 和密码登录；没有账号可一键随机';
-      // 已登录态自动填当前信息便于切换账号
-      if (u && u.user_id) {
-        $('#loginId').value = u.user_id;
-        $('#loginPwd').value = '';
-        $('#loginId').disabled = true;
-        $('#loginExists').classList.add('hidden');
-      } else {
-        $('#loginId').value = ''; $('#loginPwd').value = '';
-        $('#loginId').disabled = false;
-      }
+      this._showAuthPane('login');
       $('#loginError').classList.add('hidden');
+      // 已登录态：预填当前用户名便于切换账号
+      const u = SOCIAL.user;
+      if (u && u.user_id) { $('#loginId').value = u.user_id; $('#loginPwd').value = ''; }
+      else { $('#loginId').value = ''; $('#loginPwd').value = ''; }
     },
     closeLogin() { $('#loginModal').classList.add('hidden'); },
+
+    // 切换 登录 / 注册 面板
+    _showAuthPane(mode) {
+      const isLogin = mode === 'login';
+      $('#loginPane').classList.toggle('hidden', !isLogin);
+      $('#regPane').classList.toggle('hidden', isLogin);
+      $('#tabLogin').classList.toggle('active', isLogin);
+      $('#tabRegister').classList.toggle('active', !isLogin);
+      $('#loginError').classList.add('hidden');
+      if (isLogin) {
+        $('#loginId').value = ''; $('#loginPwd').value = '';
+        $('#loginExists').classList.add('hidden');
+      } else {
+        $('#regId').value = ''; $('#regPwd').value = ''; $('#regPwd2').value = '';
+      }
+    },
 
     async _doLogin() {
       const userId = $('#loginId').value.trim();
       const password = $('#loginPwd').value;
-      if (!/^\d{8}$/.test(userId)) { this._loginErr('请输入 8 位数字的用户ID'); return; }
+      if (!/^[\w一-龥]{3,20}$/.test(userId)) { this._loginErr('用户名 3~20 位（字母/数字/中文/下划线）'); return; }
       if (!password || password.length < 6) { this._loginErr('请输入 6~32 位密码'); return; }
       const btn = $('#loginBtn'); btn.disabled = true; btn.textContent = '登录中…';
       try {
@@ -466,6 +475,29 @@
         this._loginErr(e.message || '登录失败');
       } finally {
         btn.disabled = false; btn.textContent = '登录';
+      }
+    },
+
+    async _doRegister() {
+      const userId = $('#regId').value.trim();
+      const pwd = $('#regPwd').value;
+      const pwd2 = $('#regPwd2').value;
+      if (!/^[\w一-龥]{3,20}$/.test(userId)) { this._loginErr('用户名 3~20 位（字母/数字/中文/下划线）'); return; }
+      if (!pwd || pwd.length < 6 || pwd.length > 32) { this._loginErr('密码 6~32 位'); return; }
+      if (pwd !== pwd2) { this._loginErr('两次输入的密码不一致'); return; }
+      const btn = $('#regBtn'); btn.disabled = true; btn.textContent = '创建中…';
+      try {
+        const u = await SOCIAL.register(userId, pwd);
+        this._meId = u.id;
+        this.closeLogin();
+        this.toast('注册成功，已自动登录 ' + (u.nickname || userId));
+        if (this._pendingPublish) { const p = this._pendingPublish; this._pendingPublish = null; this.openPublish(p.urls, p.set); }
+        if (this._feedSort === 'for_you' || this._pendingForYou) { this._pendingForYou = false; this.loadFeed(true); }
+        this.renderMine();
+      } catch (e) {
+        this._loginErr(e.message || '注册失败');
+      } finally {
+        btn.disabled = false; btn.textContent = '注册并登录';
       }
     },
 
@@ -508,15 +540,15 @@
     _loginErr(msg) {
       const e = $('#loginError');
       e.textContent = msg; e.classList.remove('hidden');
-      // 顺便告诉用户这个 ID 是否已注册
+      // 登录面板下，若该用户名已注册则提示直接登录
       const uid = $('#loginId').value.trim();
-      if (/^\d{8}$/.test(uid)) {
+      if (/^[\w一-龥]{3,20}$/.test(uid)) {
         SOCIAL.check(uid).then(d => {
-          if (d && d.ok && d.exists) {
-            $('#loginExists').classList.remove('hidden');
-            $('#loginId').disabled = true;
-          }
+          if (d && d.ok && d.exists) $('#loginExists').classList.remove('hidden');
+          else $('#loginExists').classList.add('hidden');
         });
+      } else {
+        $('#loginExists').classList.add('hidden');
       }
     },
 
@@ -689,22 +721,28 @@
         const m = document.getElementById(id);
         if (m) m.addEventListener('click', (ev) => { if (ev.target === m) { if (id === 'loginModal') this.closeLogin(); else if (id === 'detailModal') this.closeDetail(); else if (id === 'userModal') this.closeUser(); else this.closePublish(); } });
       });
-      // 登录事件
+      // 登录 / 注册事件
       $('#loginBtn').onclick = () => this._doLogin();
+      $('#regBtn').onclick = () => this._doRegister();
       $('#randomBtn').onclick = () => this._doRandom();
+      $('#tabLogin').onclick = () => this._showAuthPane('login');
+      $('#tabRegister').onclick = () => this._showAuthPane('register');
       // 回车提交
       $('#loginId').onkeydown = (e) => { if (e.key === 'Enter') $('#loginPwd').focus(); };
       $('#loginPwd').onkeydown = (e) => { if (e.key === 'Enter') this._doLogin(); };
-      // ID 输入完失焦时检查是否存在
+      $('#regId').onkeydown = (e) => { if (e.key === 'Enter') $('#regPwd').focus(); };
+      $('#regPwd').onkeydown = (e) => { if (e.key === 'Enter') $('#regPwd2').focus(); };
+      $('#regPwd2').onkeydown = (e) => { if (e.key === 'Enter') this._doRegister(); };
+      // 登录框输入时检查是否已注册
       $('#loginId').addEventListener('input', () => {
         const v = $('#loginId').value.trim();
-        if (/^\d{8}$/.test(v)) {
+        if (/^[\w一-龥]{3,20}$/.test(v)) {
           SOCIAL.check(v).then(d => {
-            if (d && d.ok && d.exists) { $('#loginExists').classList.remove('hidden'); $('#loginId').disabled = true; }
-            else { $('#loginExists').classList.add('hidden'); $('#loginId').disabled = false; }
+            if (d && d.ok && d.exists) $('#loginExists').classList.remove('hidden');
+            else $('#loginExists').classList.add('hidden');
           });
         } else {
-          $('#loginExists').classList.add('hidden'); $('#loginId').disabled = false;
+          $('#loginExists').classList.add('hidden');
         }
       });
       $('#closeLogin').onclick = () => this.closeLogin();

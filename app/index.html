@@ -136,31 +136,44 @@
     </div>
   </div>
 
-  <!-- ============ 登录弹窗（用户ID + 密码 / 一键随机新账号）============ -->
+  <!-- ============ 登录 / 注册弹窗（用户名 + 密码）============ -->
   <div id="loginModal" class="modal hidden">
     <div class="modal-card">
       <button id="closeLogin" class="modal-close">✕</button>
-      <h3>🔑 登录知卡</h3>
-      <p id="loginHint" class="modal-sub">输入你的用户ID和密码，没有账号可一键随机</p>
+      <h3>🔑 知卡</h3>
 
-      <div id="loginInputs">
-        <input id="loginId" class="text-input" type="text" inputmode="numeric" maxlength="8" pattern="\d{8}" placeholder="用户ID（8位数字）" />
+      <div class="auth-tabs">
+        <button id="tabLogin" class="auth-tab active">登录</button>
+        <button id="tabRegister" class="auth-tab">注册</button>
+      </div>
+
+      <!-- 登录面板 -->
+      <div id="loginPane">
+        <input id="loginId" class="text-input" type="text" maxlength="20" placeholder="用户名" autocomplete="username" />
         <input id="loginPwd" class="text-input" type="password" placeholder="密码（6~32 位）" autocomplete="current-password" />
         <div class="login-row">
           <label class="login-check"><input id="loginRemember" type="checkbox" checked /> 记住我</label>
         </div>
         <button id="loginBtn" class="primary-btn block">登录</button>
-        <p id="loginExists" class="login-exists hidden">⚠ 该用户ID 已注册，直接输入密码登录</p>
+        <p id="loginExists" class="login-exists hidden">⚠ 该用户名已注册，请输入密码直接登录</p>
       </div>
 
-      <div class="login-divider"><span>没账号？</span></div>
+      <!-- 注册面板 -->
+      <div id="regPane" class="hidden">
+        <input id="regId" class="text-input" type="text" maxlength="20" placeholder="设置用户名（3~20 位）" autocomplete="username" />
+        <input id="regPwd" class="text-input" type="password" placeholder="设置密码（6~32 位）" autocomplete="new-password" />
+        <input id="regPwd2" class="text-input" type="password" placeholder="再次输入密码" autocomplete="new-password" />
+        <button id="regBtn" class="primary-btn block">注册并登录</button>
+      </div>
+
+      <div class="login-divider"><span>懒得填？一键生成</span></div>
 
       <button id="randomBtn" class="oauth-btn random">
         <span class="oauth-ico">🎲</span><span>一键随机账号（自动创建）</span>
       </button>
 
       <p id="loginError" class="login-err hidden"></p>
-      <p class="modal-tip">用户ID 与密码已记在本地，下次打开自动登录；丢失可在「我的」修改</p>
+      <p class="modal-tip">账号记在本地，下次打开自动登录；可在「我的」修改昵称与密码</p>
     </div>
   </div>
 

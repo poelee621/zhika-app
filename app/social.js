@@ -53,6 +53,14 @@ const SOCIAL = {
     this.setUser(d.user);
     return d;
   },
+  // 用户名 + 密码自主注册（成功后自动登录）
+  async register(user_id, password) {
+    const d = await this.post('/api/auth/register', { user_id, password });
+    if (!d.ok) return d;
+    this.setToken(d.token);
+    this.setUser(d.user);
+    return d;
+  },
   logout() { this.setToken(''); this.setUser(''); },
   isLogin() { return !!(this.token && this.user && this.user.id); },
 
