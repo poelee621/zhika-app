@@ -1,20 +1,17 @@
 -- 知卡 ZhiCard 社区版数据模型（D1 SQLite）
+-- 全新部署用：wrangler d1 execute zhika-social --file=schema.sql
+-- 在线迁移用：worker.js 启动时自动 migrateDB()（幂等 PRAGMA 检测后 ALTER）
+-- 登录：用户ID(8位数字) + 密码（PBKDF2-SHA256/100k）
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
-  phone TEXT UNIQUE NOT NULL,
+  user_id TEXT UNIQUE,
+  password_hash TEXT NOT NULL DEFAULT '',
   nickname TEXT DEFAULT '',
   avatar_id TEXT,
   bio TEXT DEFAULT '',
+  phone TEXT,                            -- 兼容旧数据，新流程不再写入
   created_at INTEGER NOT NULL
-);
-
--- 短信验证码（每手机号一行，含重发冷却）
-CREATE TABLE IF NOT EXISTS sms_codes (
-  phone TEXT PRIMARY KEY,
-  code TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  next_at INTEGER NOT NULL
 );
 
 -- 卡片发布（images = media id 列表 JSON；cards = 原始卡片数据 JSON；tags = 分类标签 JSON 数组，如 ["tech","knowledge"]）
@@ -64,6 +61,8 @@ CREATE TABLE IF NOT EXISTS media (
   created_at INTEGER NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
 CREATE INDEX IF NOT EXISTS idx_cards_created ON cards(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id, created_at DESC);

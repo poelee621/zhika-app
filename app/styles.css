@@ -117,6 +117,24 @@ body {
 .modal-card .primary-btn, .modal-card .ghost-btn { margin-top: 10px; }
 .modal-card .text-btn { margin-top: 14px; }
 
+/* 登录弹窗（用户ID + 密码 / 一键随机） */
+.modal-card .text-input { display: block; width: 100%; margin: 0 0 10px; box-sizing: border-box; }
+.modal-card .login-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 12px; font-size: 12px; color: var(--sub); }
+.modal-card .login-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.login-exists { color: #f59e0b; background: #fffbeb; border-radius: 8px; padding: 8px 12px; font-size: 12px; margin: 0 0 12px; text-align: left; }
+.login-err { color: #e11d48; background: #fef2f2; border-radius: 8px; padding: 8px 12px; font-size: 12px; margin: 10px 0 0; text-align: left; word-break: break-all; }
+.login-divider { display: flex; align-items: center; gap: 8px; margin: 18px 0 12px; color: var(--sub); font-size: 12px; }
+.login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.oauth-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 12px 14px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; color: var(--ink); font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s;
+}
+.oauth-btn:active { transform: scale(.98); }
+.oauth-btn .oauth-ico { font-size: 20px; line-height: 1; }
+.oauth-btn.random { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border-color: transparent; box-shadow: 0 6px 18px rgba(99,102,241,.25); }
+.oauth-btn.random:active { opacity: .92; }
+.modal-card .modal-tip { font-size: 11px; color: var(--sub); margin: 14px 0 0; line-height: 1.5; }
+
 /* 视觉隐藏但仍在渲染树：iOS WKWebView 对 display:none 的 file input 调 .click() 不弹选择器，
    用 opacity:0 + 绝对定位（非 display:none / visibility:hidden）可正常触发系统选图器 */
 .visually-hidden {

@@ -17,7 +17,7 @@
     _feedTag: '',         // '' = 全部
     _mineCursor: null,
     _mineEnd: false,
-    _meId: (SOCIAL.user() || {}).id || '',
+    _meId: ((SOCIAL.user || {}) || {}).id || '',
     _detailCard: null,
     _publishUrls: [],
     _publishSet: null,
@@ -358,7 +358,7 @@
     // ==================== 我的页面 ====================
     renderMine() {
       const box = $('#view-mine');
-      const u = SOCIAL.user();
+      const u = SOCIAL.user;
       if (!u) {
         box.innerHTML = `
           <div class="mine-empty">
@@ -393,7 +393,7 @@
         r.onload = () => this._uploadAvatar(String(r.result));
         r.readAsDataURL(f);
       };
-      $('#mineEdit').onclick = () => this.openEditProfile(u);
+      $('#mineEdit').onclick = () => this._editAccount();
       $('#mineLogout').onclick = () => { SOCIAL.logout(); this._meId = ''; this.renderMine(); this.toast('已退出登录'); };
       this._loadMine(true);
     },
@@ -419,7 +419,7 @@
       if (reset) { this._mineCursor = null; this._mineEnd = false; $('#mineCards').innerHTML = ''; }
       if (this._mineEnd) { $('#mineSentinel').textContent = '— 到底啦 —'; return; }
       try {
-        const me = SOCIAL.user(); if (!me) return;
+        const me = SOCIAL.user; if (!me) return;
         const d = await SOCIAL.userProfile(me.id, this._mineCursor);
         this._mineCursor = d.next_cursor;
         if (!d.next_cursor) this._mineEnd = true;
@@ -428,23 +428,119 @@
       } catch (e) { $('#mineSentinel').textContent = '加载失败'; }
     },
 
-    // ==================== 登录弹窗 ====================
+    // ==================== 登录弹窗（用户ID + 密码 / 一键随机）====================
     openLogin(hint) {
+      const u = SOCIAL.user;
       $('#loginModal').classList.remove('hidden');
-      $('#loginHint').textContent = hint || '选择一个方式登录，未注册将自动创建账号';
+      $('#loginHint').textContent = hint || '输入用户ID 和密码登录；没有账号可一键随机';
+      // 已登录态自动填当前信息便于切换账号
+      if (u && u.user_id) {
+        $('#loginId').value = u.user_id;
+        $('#loginPwd').value = '';
+        $('#loginId').disabled = true;
+        $('#loginExists').classList.add('hidden');
+      } else {
+        $('#loginId').value = ''; $('#loginPwd').value = '';
+        $('#loginId').disabled = false;
+      }
+      $('#loginError').classList.add('hidden');
     },
-    closeLogin() { $('#loginModal').classList.add('hidden'); if (this._smsTimer) clearInterval(this._smsTimer); },
+    closeLogin() { $('#loginModal').classList.add('hidden'); },
 
-    async _thirdLogin(provider) {
+    async _doLogin() {
+      const userId = $('#loginId').value.trim();
+      const password = $('#loginPwd').value;
+      if (!/^\d{8}$/.test(userId)) { this._loginErr('请输入 8 位数字的用户ID'); return; }
+      if (!password || password.length < 6) { this._loginErr('请输入 6~32 位密码'); return; }
+      const btn = $('#loginBtn'); btn.disabled = true; btn.textContent = '登录中…';
       try {
-        const u = await SOCIAL.thirdLogin(provider);
-        this._meId = u.id;
+        const d = await SOCIAL.login(userId, password);
+        if (!d.ok) { this._loginErr(d.error || '登录失败'); return; }
+        this._meId = d.user.id;
         this.closeLogin();
-        this.toast('登录成功，欢迎 ' + (u.nickname || '知友'));
+        this.toast('登录成功，欢迎 ' + (d.user.nickname || '知友'));
         if (this._pendingPublish) { const p = this._pendingPublish; this._pendingPublish = null; this.openPublish(p.urls, p.set); }
         if (this._feedSort === 'for_you' || this._pendingForYou) { this._pendingForYou = false; this.loadFeed(true); }
         this.renderMine();
-      } catch (e) { this.toast(e.message); }
+      } catch (e) {
+        this._loginErr(e.message || '登录失败');
+      } finally {
+        btn.disabled = false; btn.textContent = '登录';
+      }
+    },
+
+    async _doRandom() {
+      const btn = $('#randomBtn'); btn.disabled = true;
+      const oldHtml = btn.innerHTML;
+      btn.innerHTML = '<span class="oauth-ico">⏳</span><span>创建中…</span>';
+      try {
+        const d = await SOCIAL.random();
+        if (!d.ok) { this._loginErr(d.error || '创建账号失败'); return; }
+        this._meId = d.user.id;
+        this.closeLogin();
+        // 弹出详情，让用户保存 ID + 初始密码
+        this._showNewAccount(d.user_id, d.temp_password, d.user.nickname);
+        if (this._pendingPublish) { const p = this._pendingPublish; this._pendingPublish = null; this.openPublish(p.urls, p.set); }
+        if (this._feedSort === 'for_you' || this._pendingForYou) { this._pendingForYou = false; this.loadFeed(true); }
+        this.renderMine();
+      } catch (e) {
+        this._loginErr(e.message || '创建失败');
+      } finally {
+        btn.disabled = false; btn.innerHTML = oldHtml;
+      }
+    },
+
+    _showNewAccount(userId, tempPassword, nickname) {
+      const lines = [
+        '🎉 新账号已创建',
+        '',
+        `用户ID:  ${userId}`,
+        `初始密码: ${tempPassword}  （首次登录请尽快修改）`,
+        `默认昵称: ${nickname || '知友'}`,
+        '',
+        '⚠ 这两项是登录凭证，请截图或在「我的 → 修改账号」里换个容易记的密码'
+      ];
+      alert(lines.join('\n'));
+      // 复制密码到剪贴板（容错抛错）
+      try { navigator.clipboard && navigator.clipboard.writeText(`用户ID: ${userId}\n初始密码: ${tempPassword}`); } catch (e) {}
+    },
+
+    _loginErr(msg) {
+      const e = $('#loginError');
+      e.textContent = msg; e.classList.remove('hidden');
+      // 顺便告诉用户这个 ID 是否已注册
+      const uid = $('#loginId').value.trim();
+      if (/^\d{8}$/.test(uid)) {
+        SOCIAL.check(uid).then(d => {
+          if (d && d.ok && d.exists) {
+            $('#loginExists').classList.remove('hidden');
+            $('#loginId').disabled = true;
+          }
+        });
+      }
+    },
+
+    // ==================== 修改账号（昵称/简介/密码）====================
+    async _editAccount() {
+      const u = SOCIAL.user; if (!u) return;
+      const newNick = prompt('修改昵称（留空不改）', u.nickname || '');
+      if (newNick !== null && newNick.trim()) {
+        await SOCIAL.updateMe({ nickname: newNick.trim().slice(0, 20) });
+        this.toast('昵称已更新');
+      }
+      const newBio = prompt('修改简介（100 字内，留空不改）', u.bio || '');
+      if (newBio !== null && newBio.trim()) {
+        await SOCIAL.updateMe({ bio: newBio.trim().slice(0, 100) });
+        this.toast('简介已更新');
+      }
+      const newPwd = prompt('修改密码（6~32 位，留空不改）', '');
+      if (newPwd && newPwd.length >= 6 && newPwd.length <= 32) {
+        await SOCIAL.updateMe({ password: newPwd });
+        this.toast('密码已修改');
+      } else if (newPwd) {
+        this.toast('密码长度 6~32 位，未修改');
+      }
+      this.renderMine();
     },
 
     // ==================== 发布弹窗 ====================
@@ -593,10 +689,24 @@
         const m = document.getElementById(id);
         if (m) m.addEventListener('click', (ev) => { if (ev.target === m) { if (id === 'loginModal') this.closeLogin(); else if (id === 'detailModal') this.closeDetail(); else if (id === 'userModal') this.closeUser(); else this.closePublish(); } });
       });
-      // 第三方一键登录
-      $('#loginWechat').onclick = () => this._thirdLogin('wechat');
-      $('#loginDouyin').onclick = () => this._thirdLogin('douyin');
-      $('#loginXiaohongshu').onclick = () => this._thirdLogin('xiaohongshu');
+      // 登录事件
+      $('#loginBtn').onclick = () => this._doLogin();
+      $('#randomBtn').onclick = () => this._doRandom();
+      // 回车提交
+      $('#loginId').onkeydown = (e) => { if (e.key === 'Enter') $('#loginPwd').focus(); };
+      $('#loginPwd').onkeydown = (e) => { if (e.key === 'Enter') this._doLogin(); };
+      // ID 输入完失焦时检查是否存在
+      $('#loginId').addEventListener('input', () => {
+        const v = $('#loginId').value.trim();
+        if (/^\d{8}$/.test(v)) {
+          SOCIAL.check(v).then(d => {
+            if (d && d.ok && d.exists) { $('#loginExists').classList.remove('hidden'); $('#loginId').disabled = true; }
+            else { $('#loginExists').classList.add('hidden'); $('#loginId').disabled = false; }
+          });
+        } else {
+          $('#loginExists').classList.add('hidden'); $('#loginId').disabled = false;
+        }
+      });
       $('#closeLogin').onclick = () => this.closeLogin();
       // 发布事件
       $('#pubSend').onclick = () => this._doPublish();

@@ -135,18 +135,31 @@
     </div>
   </div>
 
-  <!-- ============ 登录弹窗（第三方一键登录，去掉手机号）============ -->
+  <!-- ============ 登录弹窗（用户ID + 密码 / 一键随机新账号）============ -->
   <div id="loginModal" class="modal hidden">
     <div class="modal-card">
       <button id="closeLogin" class="modal-close">✕</button>
       <h3>🔑 登录知卡</h3>
-      <p id="loginHint" class="modal-sub">选择一个方式登录，未注册将自动创建账号</p>
-      <div class="oauth-list">
-        <button class="oauth-btn wechat" id="loginWechat"><span class="oauth-ico">💬</span><span>微信登录</span></button>
-        <button class="oauth-btn douyin" id="loginDouyin"><span class="oauth-ico">🎵</span><span>抖音登录</span></button>
-        <button class="oauth-btn xiaohongshu" id="loginXiaohongshu"><span class="oauth-ico">📕</span><span>小红书登录</span></button>
+      <p id="loginHint" class="modal-sub">输入你的用户ID和密码，没有账号可一键随机</p>
+
+      <div id="loginInputs">
+        <input id="loginId" class="text-input" type="text" inputmode="numeric" maxlength="8" pattern="\d{8}" placeholder="用户ID（8位数字）" />
+        <input id="loginPwd" class="text-input" type="password" placeholder="密码（6~32 位）" autocomplete="current-password" />
+        <div class="login-row">
+          <label class="login-check"><input id="loginRemember" type="checkbox" checked /> 记住我</label>
+        </div>
+        <button id="loginBtn" class="primary-btn block">登录</button>
+        <p id="loginExists" class="login-exists hidden">⚠ 该用户ID 已注册，直接输入密码登录</p>
       </div>
-      <p class="modal-tip">MVP 版本：一键快捷登录，后续接入各平台官方授权</p>
+
+      <div class="login-divider"><span>没账号？</span></div>
+
+      <button id="randomBtn" class="oauth-btn random">
+        <span class="oauth-ico">🎲</span><span>一键随机账号（自动创建）</span>
+      </button>
+
+      <p id="loginError" class="login-err hidden"></p>
+      <p class="modal-tip">用户ID 与密码已记在本地，下次打开自动登录；丢失可在「我的」修改</p>
     </div>
   </div>
 
