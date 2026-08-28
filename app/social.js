@@ -18,9 +18,21 @@ const SOCIAL = {
     opts = opts || {};
     const headers = { 'Content-Type': 'application/json' };
     if (this.token) headers.Authorization = 'Bearer ' + this.token;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
     let res;
-    try { res = await fetch(this.BASE + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined }); }
-    catch (e) { return { ok: false, error: '网络异常，请稍后重试' }; }
+    try {
+      res = await fetch(this.BASE + path, {
+        method: opts.method || 'GET',
+        headers,
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        signal: ctrl.signal
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      return { ok: false, error: '网络异常或请求超时（12秒），请稍后重试或检查网络' };
+    }
+    clearTimeout(timer);
     let json;
     try { json = await res.json(); }
     catch (e) { return { ok: false, error: '服务响应异常（' + res.status + '）' }; }
