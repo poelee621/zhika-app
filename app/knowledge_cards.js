@@ -1,15 +1,26 @@
-// knowledge_cards.js —— 知卡知识卡片生成器（Canvas 绘制，3:4 竖版 1080×1440）
-// 根据 LLM 提炼结果 set {title, summary, theme, cards:[{type,label,content}]}
-// 产出：第 0 张封面卡 + 各知识卡，全部可直接保存/分享。
-// 设计：竞品(Readwise/Anki)只有丑文字卡；知卡直接出精美图，可发小红书/朋友圈。
+// knowledge_cards.js —— 知卡知识卡片生成器
+// 设计：5 套模板（极简/小红书/杂志/文艺/信息图），根据内容自适应排版
+// 1080×1440 (3:4) 单图 JPEG；首图带主题+首观点；如有多张观点再出第 2 张信息图
+// 用户可在 index.html 顶部切模板，重渲染当前 set
 
 const KnowledgeCards = {
   W: 1080, H: 1440,
   INK: '#1a1a1a', SUB: '#8a8a8a', WHITE: '#ffffff',
+  SOFT: '#faf7f2',                                   // 文艺米色底
   FONT: '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif',
+  FONT_SERIF: '"Songti SC","Source Han Serif SC","STSong","SimSun",serif',
+
+  // 5 套可挑模板（UI 上展示用）
+  TEMPLATES: {
+    minimal:     { key: 'minimal',     label: '极简',  icon: '⬜', desc: '白底大字，留白极简' },
+    xiaohongshu: { key: 'xiaohongshu', label: '小红书', icon: '🌸', desc: '渐变色块+装饰，社交感强' },
+    magazine:    { key: 'magazine',    label: '杂志',  icon: '📰', desc: '白底标题分级，长文友好' },
+    literary:    { key: 'literary',    label: '文艺',  icon: '🎨', desc: '米黄衬线，引号大字' },
+    infograph:   { key: 'infograph',   label: '信息图', icon: '📊', desc: '多色卡片阵列，观点多时用' }
+  },
 
   _theme(key) {
-    return (window.CoverEngine && window.CoverEngine.THEMES[key]) || window.CoverEngine.THEMES.knowledge;
+    return (window.CoverEngine && window.CoverEngine.THEMES[key]) || (window.CoverEngine && window.CoverEngine.THEMES.knowledge) || { g: ['#222', '#444'], accent: '#fff', ink: '#fff', tint: '#eee', icon: '📚', label: '知卡' };
   },
 
   // 中文按字符测量换行
@@ -22,7 +33,6 @@ const KnowledgeCards = {
     if (line) lines.push(line);
     return lines;
   },
-
   _rrect(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -33,269 +43,367 @@ const KnowledgeCards = {
     ctx.closePath();
   },
 
-  _brandBar(ctx) {
-    ctx.fillStyle = '#3b5bdb';
-    this._rrect(ctx, 64, 56, 132, 60, 30); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = '700 32px ' + this.FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('📚 知卡', 130, 86);
+  // 根据字符长度选字号：长文缩小、短文放大；maxCap 是该模板的上限
+  _pickFontSize(len, maxCap) {
+    if (len <= 20) return Math.min(150, maxCap);
+    if (len <= 40) return Math.min(110, maxCap);
+    if (len <= 80) return Math.min(80, maxCap);
+    if (len <= 160) return Math.min(58, maxCap);
+    if (len <= 320) return Math.min(44, maxCap);
+    return Math.min(36, maxCap);
   },
 
-  _foot(ctx, t) {
-    ctx.fillStyle = this.SUB; ctx.font = '400 28px ' + this.FONT;
+  // ==================== 模板选择策略（AI 没指定时根据内容字数自动选）====================
+  pickTemplate(set) {
+    const cards = set.cards || [];
+    if (!cards.length) return 'minimal';
+    if (cards.length === 1) {
+      const len = (cards[0].content || '').length;
+      if (len <= 28) return 'minimal';          // 短→极简强留白
+      if (len <= 90) return 'xiaohongshu';      // 中→小红书氛围
+      return 'magazine';                         // 长→杂志段落
+    }
+    if (cards.length <= 3) return 'xiaohongshu';
+    return 'infograph';                          // 多观点 → 信息图
+  },
+
+  // ==================== 主入口：返回 [dataURL1, dataURL2?] ====================
+  generateSet(set, opts) {
+    opts = opts || {};
+    const t = this._theme((opts && opts.theme) || (set && set.theme));
+    const template = opts.template || (set && set.template) || this.pickTemplate(set);
+    const cards = Array.isArray(set && set.cards) ? set.cards.slice(0, 6) : [];
+
+    const out = [];
+
+    // 主图：覆盖标题 + 摘要 + 首条观点（如有）
+    let c = document.createElement('canvas'); c.width = this.W; c.height = this.H;
+    const x = c.getContext('2d'); x.textBaseline = 'top';
+    this._renderByTemplate(template, x, set || {}, t, cards);
+    out.push(c.toDataURL('image/jpeg', 0.92));
+
+    // 多观点 + 模板适合多张 → 再出一张"补充"
+    if (cards.length > 1 && (template === 'infograph' || template === 'xiaohongshu' || template === 'magazine')) {
+      const c2 = document.createElement('canvas'); c2.width = this.W; c2.height = this.H;
+      const x2 = c2.getContext('2d'); x2.textBaseline = 'top';
+      this._renderRest(x2, set || {}, t, cards, template);
+      out.push(c2.toDataURL('image/jpeg', 0.92));
+    }
+    return out;
+  },
+
+  _renderByTemplate(tpl, ctx, set, t, cards) {
+    const map = {
+      minimal: () => this._renderMinimal(ctx, set, t, cards),
+      xiaohongshu: () => this._renderXiaohongshu(ctx, set, t, cards),
+      magazine: () => this._renderMagazine(ctx, set, t, cards),
+      literary: () => this._renderLiterary(ctx, set, t, cards),
+      infograph: () => this._renderInfograph(ctx, set, t, cards)
+    };
+    (map[tpl] || map.xiaohongshu)();
+  },
+
+  // ==================== 模板1：极简（白底大字强留白）====================
+  // 适合 1 张短观点（≤28 字）
+  _renderMinimal(ctx, set, t, cards) {
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, this.W, this.H);
+    const mainText = (cards[0] && cards[0].content) || (set && set.title) || '';
+    const accent = t.accent || '#3b5bdb';
+
+    // 顶标：主题+知卡
+    ctx.fillStyle = accent; ctx.fillRect(96, 96, 50, 6);
+    ctx.fillStyle = t.g[0]; ctx.font = '600 30px ' + this.FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText((t.icon || '📚') + '  ' + (t.label || '知卡'), 96, 124);
+
+    // 大字观点（按字数自适应）
+    const fs = this._pickFontSize(mainText.length, 150);
+    ctx.fillStyle = this.INK;
+    ctx.font = `800 ${fs}px ${this.FONT}`;
+    const lines = this._wrap(ctx, mainText, this.W - 200);
+    const lineH = fs * 1.28;
+    const totalH = lines.length * lineH;
+    let y = Math.max(260, (this.H - totalH) / 2 - 60);
+    lines.forEach(l => { ctx.fillText(l, 100, y); y += lineH; });
+
+    // 标题/摘要
+    const subTitle = set.title && set.title !== mainText ? set.title : '';
+    if (subTitle) {
+      ctx.fillStyle = this.SUB; ctx.font = '500 32px ' + this.FONT;
+      const sl = this._wrap(ctx, subTitle, this.W - 200).slice(0, 1);
+      if (sl[0]) ctx.fillText('— ' + sl[0], 100, this.H - 280);
+    }
+    // 底部水印
+    ctx.fillStyle = this.SUB; ctx.font = '400 24px ' + this.FONT;
+    ctx.textAlign = 'right';
+    ctx.fillText('知卡 · 内容变知识卡片', this.W - 100, this.H - 80);
+    ctx.textAlign = 'left';
+    ctx.fillText(set.summary || '', 100, this.H - 80);
+  },
+
+  // ==================== 模板2：小红书卡（渐变色块+装饰+大字+标签）====================
+  // 适合 1~3 张中等长度观点
+  _renderXiaohongshu(ctx, set, t, cards) {
+    // 渐变底
+    const g = ctx.createLinearGradient(0, 0, this.W, this.H);
+    g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
+
+    // 装饰圆 + 模糊光斑
+    ctx.fillStyle = 'rgba(255,255,255,.12)';
+    ctx.beginPath(); ctx.arc(940, 200, 160, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(120, 1240, 120, 0, 7); ctx.fill();
+    ctx.fillStyle = t.accent;
+    ctx.beginPath(); ctx.arc(this.W - 140, 880, 38, 0, 7); ctx.fill();
+
+    // 顶部标签条
+    ctx.fillStyle = t.accent;
+    this._rrect(ctx, 96, 110, 220, 60, 30); ctx.fill();
+    ctx.fillStyle = this.INK; ctx.font = '700 30px ' + this.FONT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('知卡 · 把内容变成你的知识卡片', this.W / 2, this.H - 56);
+    ctx.fillText((t.icon || '📚') + ' ' + (t.label || '知卡'), 96 + 110, 110 + 30);
+
+    // 标题
+    const title = (set && set.title) || '';
+    if (title) {
+      ctx.fillStyle = t.ink || this.WHITE; ctx.font = '700 60px ' + this.FONT;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const tlines = this._wrap(ctx, title, this.W - 200).slice(0, 2);
+      let y = 220;
+      tlines.forEach(l => { ctx.fillText(l, 100, y); y += 78; });
+    }
+
+    // 大字观点（首条）
+    const mainText = (cards[0] && cards[0].content) || '';
+    if (mainText) {
+      const fs = this._pickFontSize(mainText.length, 110);
+      ctx.fillStyle = t.ink || this.WHITE;
+      ctx.font = `900 ${fs}px ${this.FONT}`;
+      const lines = this._wrap(ctx, mainText, this.W - 240).slice(0, 6);
+      const lineH = fs * 1.32;
+      let y = Math.max(440, (this.H - lines.length * lineH) / 2);
+      lines.forEach(l => { ctx.fillText(l, 120, y); y += lineH; });
+    }
+
+    // 底部小红书风标签条
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    this._rrect(ctx, 100, this.H - 220, this.W - 200, 120, 60); ctx.fill();
+    ctx.fillStyle = t.ink || this.WHITE; ctx.font = '500 32px ' + this.FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const sm = (set && set.summary) || '点击下方发布到知卡社区';
+    const smLines = this._wrap(ctx, sm, this.W - 260).slice(0, 2);
+    smLines.forEach((l, i) => ctx.fillText(l, 130, this.H - 220 + 40 + i * 44));
+
+    // 右下小字
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = '400 22px ' + this.FONT;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillText('· 知卡 ZhiCard ·', this.W - 100, this.H - 36);
   },
 
-  _label(ctx, text, x, y, accent) {
-    ctx.fillStyle = accent;
-    this._rrect(ctx, x, y - 34, 8 + ctx.measureText(text).width + 64, 64, 32); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = '700 34px ' + this.FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + 32, y);
+  // ==================== 模板3：杂志风（白底+标题分级+正文段落）====================
+  // 适合 1 张长观点（>90 字）
+  _renderMagazine(ctx, set, t, cards) {
+    // 白底 + 顶部色条
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, this.W, this.H);
+    ctx.fillStyle = t.g[0]; ctx.fillRect(0, 0, this.W, 120);
+
+    // 杂志头部色条
+    ctx.fillStyle = t.accent; ctx.fillRect(80, 80, 80, 8);
+
+    // 标题
+    ctx.fillStyle = t.ink || this.WHITE;
+    ctx.font = '700 48px ' + this.FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText((t.icon || '📚') + ' ' + (t.label || '知卡') + ' · 知卡', 80, 50);
+
+    // 大标题
+    const title = (set && set.title) || '';
+    ctx.fillStyle = this.INK;
+    ctx.font = '800 80px ' + this.FONT;
+    const tl = this._wrap(ctx, title, this.W - 160).slice(0, 2);
+    let y = 200;
+    tl.forEach(l => { ctx.fillText(l, 80, y); y += 100; });
+
+    // 副标/摘要
+    if (set && set.summary) {
+      ctx.fillStyle = t.g[0];
+      ctx.font = 'italic 36px ' + this.FONT_SERIF;
+      const sl = this._wrap(ctx, set.summary, this.W - 160).slice(0, 1);
+      if (sl[0]) { ctx.fillText(sl[0], 80, y + 18); y += 80; }
+    }
+
+    // 分隔线
+    ctx.fillStyle = t.accent; ctx.fillRect(80, y + 18, 60, 4);
+
+    // 正文（首条观点，多段）
+    const mainText = (cards[0] && cards[0].content) || '';
+    const fs = this._pickFontSize(mainText.length, 64);
+    ctx.fillStyle = this.INK; ctx.font = `500 ${fs}px ${this.FONT}`;
+    const maxLines = Math.floor((this.H - y - 200) / (fs * 1.7));
+    const bodyLines = this._wrap(ctx, mainText, this.W - 160).slice(0, maxLines);
+    let by = y + 50;
+    const lh = fs * 1.7;
+    bodyLines.forEach(l => { ctx.fillText(l, 80, by); by += lh; });
+
+    // 底部页脚
+    ctx.fillStyle = this.SUB; ctx.font = '400 24px ' + this.FONT;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillText('知卡 ZhiCard · Page 1', this.W - 80, this.H - 60);
   },
 
-  // 0) 封面卡（渐变底 + 大标题 + 摘要 + 首条核心观点大字）
-  _cover(ctx, set, t, first) {
+  // ==================== 模板4：文艺（米黄底+衬线+引号大字）====================
+  _renderLiterary(ctx, set, t, cards) {
+    ctx.fillStyle = this.SOFT; ctx.fillRect(0, 0, this.W, this.H);
+    // 米色柔和渐变
+    const g = ctx.createLinearGradient(0, 0, 0, this.H);
+    g.addColorStop(0, '#fdfaf3'); g.addColorStop(1, '#f0e9d8');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
+
+    // 装饰线
+    ctx.strokeStyle = t.g[0]; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(80, 100); ctx.lineTo(80, this.H - 100); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(this.W - 80, 100); ctx.lineTo(this.W - 80, this.H - 100); ctx.stroke();
+
+    // 顶部题款
+    ctx.fillStyle = t.g[0]; ctx.font = 'italic 28px ' + this.FONT_SERIF;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText((t.icon || '📚') + ' ' + (t.label || '知卡'), 100, 90);
+
+    // 引号大字
+    const mainText = (cards[0] && cards[0].content) || '';
+    ctx.fillStyle = t.g[0]; ctx.font = '900 200px ' + this.FONT_SERIF;
+    ctx.fillText('“', 80, 140);
+
+    // 大字观点（衬线）
+    const fs = this._pickFontSize(mainText.length, 96);
+    ctx.fillStyle = '#1a1a1a'; ctx.font = `600 ${fs}px ${this.FONT_SERIF}`;
+    const lines = this._wrap(ctx, mainText, this.W - 280).slice(0, 6);
+    const lh = fs * 1.32;
+    let y = 280;
+    lines.forEach(l => { ctx.fillText(l, 140, y); y += lh; });
+
+    // 收尾引号
+    ctx.fillStyle = t.g[0]; ctx.font = '900 200px ' + this.FONT_SERIF;
+    if (y < this.H - 280) ctx.fillText('”', this.W - 200, y - 40);
+
+    // 标题（署名）
+    ctx.fillStyle = this.INK; ctx.font = 'italic 36px ' + this.FONT_SERIF;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    if (set && set.title) ctx.fillText('— ' + set.title, this.W - 130, this.H - 140);
+
+    ctx.fillStyle = this.SUB; ctx.font = '400 20px ' + this.FONT_SERIF;
+    ctx.fillText('知卡 ZhiCard', this.W - 130, this.H - 90);
+  },
+
+  // ==================== 模板5：信息图（多色块卡片阵列）====================
+  _renderInfograph(ctx, set, t, cards) {
+    // 米色底
+    ctx.fillStyle = this.SOFT; ctx.fillRect(0, 0, this.W, this.H);
+    // 顶条
+    ctx.fillStyle = t.g[0]; ctx.fillRect(0, 0, this.W, 110);
+
+    ctx.fillStyle = t.ink || this.WHITE; ctx.font = '700 36px ' + this.FONT;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText((t.icon || '📚') + ' ' + (t.label || '知卡') + ' · 知卡', 80, 36);
+
+    // 标题
+    if (set && set.title) {
+      ctx.fillStyle = this.INK; ctx.font = '700 56px ' + this.FONT;
+      const tl = this._wrap(ctx, set.title, this.W - 160).slice(0, 2);
+      let y = 130;
+      tl.forEach(l => { ctx.fillText(l, 80, y); y += 70; });
+    }
+
+    // 每条观点一块色卡
+    const list = cards.slice(0, 4);
+    const cardW = this.W - 160, cardH = 180;
+    const startY = 280;
+    list.forEach((c, i) => {
+      const cy = startY + i * (cardH + 22);
+      // 卡底
+      ctx.fillStyle = '#fff';
+      this._rrect(ctx, 80, cy, cardW, cardH, 24); ctx.fill();
+      // 左色条
+      ctx.fillStyle = t.g[0];
+      this._rrect(ctx, 80, cy, 12, cardH, 24); ctx.fill();
+      // 序号
+      ctx.fillStyle = t.accent;
+      ctx.font = '900 50px ' + this.FONT;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), 116, cy + 30);
+      // 文字
+      ctx.fillStyle = this.INK; ctx.font = '600 36px ' + this.FONT;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      const lines = this._wrap(ctx, c.content || '', cardW - 120).slice(0, 3);
+      let cy2 = cy + 28;
+      lines.forEach(l => { ctx.fillText(l, 196, cy2); cy2 += 52; });
+    });
+
+    // 底部
+    ctx.fillStyle = this.SUB; ctx.font = '400 22px ' + this.FONT;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillText('知卡 · 内容变知识卡片', this.W - 80, this.H - 36);
+  },
+
+  // ==================== 多观点补充页（用同模板的另一张布局）====================
+  _renderRest(ctx, set, t, cards, template) {
+    const rest = cards.slice(1);
+    if (!rest.length) return;
+    if (template === 'infograph') {
+      // 重新走信息图，剔除首条
+      this._renderInfograph(ctx, { ...set, title: '更多观点' }, t, rest);
+      return;
+    }
+    if (template === 'magazine') {
+      // 杂志风：左色条 + 多段正文
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, this.W, this.H);
+      ctx.fillStyle = t.g[0]; ctx.fillRect(0, 0, 14, this.H);
+      ctx.fillStyle = t.g[0]; ctx.font = '700 56px ' + this.FONT;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText('更多观点', 80, 100);
+      let y = 200;
+      rest.slice(0, 4).forEach((c, i) => {
+        // 编号
+        ctx.fillStyle = t.accent;
+        ctx.font = '900 60px ' + this.FONT;
+        ctx.fillText(String(i + 1) + '.', 80, y);
+        ctx.fillStyle = this.INK;
+        ctx.font = '600 38px ' + this.FONT;
+        const lines = this._wrap(ctx, c.content || '', this.W - 220).slice(0, 3);
+        let cy = y;
+        lines.forEach(l => { ctx.fillText(l, 200, cy); cy += 56; });
+        y = cy + 30;
+      });
+      ctx.fillStyle = this.SUB; ctx.font = '400 22px ' + this.FONT;
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillText('知卡 · Page 2', this.W - 80, this.H - 60);
+      return;
+    }
+    // 小红书补充页：色块列表
     const g = ctx.createLinearGradient(0, 0, this.W, this.H);
     g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
     ctx.fillStyle = 'rgba(255,255,255,.10)';
-    ctx.beginPath(); ctx.arc(940, 200, 150, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(120, 1240, 110, 0, 7); ctx.fill();
-
-    ctx.fillStyle = t.accent; ctx.font = '700 36px ' + this.FONT;
+    ctx.beginPath(); ctx.arc(100, 1240, 120, 0, 7); ctx.fill();
+    ctx.fillStyle = t.accent; ctx.font = '700 56px ' + this.FONT;
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(t.icon + '  ' + t.label + ' · 知卡', 84, 110);
-
-    const title = set.title || '知识卡片';
-    ctx.fillStyle = this.WHITE; ctx.font = '800 76px ' + this.FONT;
-    const tlines = this._wrap(ctx, title, this.W - 168).slice(0, 3);
-    let y = 280;
-    tlines.forEach(l => { ctx.fillText(l, 84, y); y += 96; });
-
-    if (set.summary) {
-      ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = '500 38px ' + this.FONT;
-      const slines = this._wrap(ctx, set.summary, this.W - 168).slice(0, 2);
-      y += 14;
-      slines.forEach(l => { ctx.fillText(l, 84, y); y += 56; });
-    }
-
-    // 首条核心观点：引号大字（重点呈现）
-    const firstText = (first && first.content) || '';
-    if (firstText) {
-      y = Math.max(y + 44, 620);
-      ctx.fillStyle = t.accent; ctx.font = '700 72px ' + this.FONT;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillText('“', 84, y);
-      ctx.fillStyle = this.WHITE; ctx.font = '800 56px ' + this.FONT;
-      const flines = this._wrap(ctx, firstText.replace(/^“|”$/g, ''), this.W - 240).slice(0, 6);
-      let fy = y + 16;
-      flines.forEach(l => { ctx.fillText(l, 176, fy); fy += 82; });
-      ctx.fillStyle = t.accent; ctx.font = '700 72px ' + this.FONT;
-      ctx.fillText('”', 84, fy + 8);
-    }
-
-    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '500 30px ' + this.FONT;
-    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText('知卡 · 把内容变成知识卡片', this.W - 84, this.H - 64);
-  },
-
-  // 补充观点卡（渐变底大字，第 2 页，最多 3 条剩余观点）
-  _core(ctx, set, t, rest) {
-    const g = ctx.createLinearGradient(0, 0, 0, this.H);
-    g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
-    ctx.fillStyle = 'rgba(255,255,255,.12)';
-    ctx.beginPath(); ctx.arc(920, 1180, 150, 0, 7); ctx.fill();
-
-    ctx.fillStyle = t.accent; ctx.font = '700 36px ' + this.FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(t.icon + '  ' + t.label + ' · 知卡', 84, 110);
-
-    const items = rest.slice(0, 3);
-    let y = 280;
-    items.forEach((it, i) => {
+    ctx.fillText('更多观点', 96, 110);
+    let y = 220;
+    rest.slice(0, 3).forEach((c, i) => {
       ctx.fillStyle = t.accent;
-      ctx.beginPath(); ctx.arc(124, y + 34, 28, 0, 7); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = '800 32px ' + this.FONT;
+      ctx.beginPath(); ctx.arc(130, y + 38, 30, 0, 7); ctx.fill();
+      ctx.fillStyle = t.ink || this.WHITE; ctx.font = '900 30px ' + this.FONT;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(i + 1), 124, y + 38);
+      ctx.fillText(String(i + 1), 130, y + 42);
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillStyle = this.WHITE; ctx.font = '800 48px ' + this.FONT;
-      const lines = this._wrap(ctx, String(it.content || ''), this.W - 240).slice(0, 4);
-      let ly = y;
-      lines.forEach(l => { ctx.fillText(l, 196, ly); ly += 66; });
-      y = ly + 46;
+      ctx.fillStyle = t.ink || this.WHITE;
+      ctx.font = '700 40px ' + this.FONT;
+      const lines = this._wrap(ctx, c.content || '', this.W - 260).slice(0, 3);
+      let cy = y;
+      lines.forEach(l => { ctx.fillText(l, 200, cy); cy += 56; });
+      y = cy + 30;
     });
-
-    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = '500 30px ' + this.FONT;
-    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText('知卡 · 把内容变成知识卡片', this.W - 84, this.H - 64);
-  },
-
-  // 金句卡（暗底大字）
-  _quote(ctx, card, t) {
-    const g = ctx.createLinearGradient(0, 0, 0, this.H);
-    g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
-    ctx.fillStyle = 'rgba(255,255,255,.16)';
-    ctx.beginPath(); ctx.arc(180, 260, 120, 0, 7); ctx.fill();
-    ctx.fillStyle = t.accent; ctx.font = '700 34px ' + this.FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText('“', 90, 150);
-    const quote = (card.content || '').replace(/^“|”$/g, '');
-    ctx.fillStyle = this.WHITE; ctx.font = '800 64px ' + this.FONT;
-    const lines = this._wrap(ctx, quote, this.W - 200).slice(0, 7);
-    let y = 360;
-    lines.forEach(l => { ctx.fillText(l, 90, y); y += 92; });
-    ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = '600 34px ' + this.FONT;
-    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText('—— 金句 · 知卡', this.W - 84, this.H - 90);
-  },
-
-  // 概念卡（白底 + 左色条 + 标签）
-  _concept(ctx, card, t) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, this.W, this.H);
-    ctx.fillStyle = t.accent; ctx.fillRect(0, 0, 14, this.H);
-    ctx.fillStyle = t.g[0]; ctx.font = '800 52px ' + this.FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText('概念', 100, 150);
-    ctx.fillStyle = t.accent; ctx.fillRect(100, 230, 120, 8);
-    ctx.fillStyle = this.INK; ctx.font = '600 46px ' + this.FONT;
-    const lines = this._wrap(ctx, card.content, this.W - 220).slice(0, 12);
-    let y = 320;
-    lines.forEach(l => { ctx.fillText(l, 100, y); y += 74; });
-    this._foot(ctx, t);
-  },
-
-  // 对比卡（白底双栏）
-  _compare(ctx, card, t) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, this.W, this.H);
-    this._brandBar(ctx);
-    ctx.fillStyle = t.g[0]; ctx.font = '800 52px ' + this.FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText('对比', 100, 150);
-    // 左右分隔
-    ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(this.W / 2, 280); ctx.lineTo(this.W / 2, this.H - 160); ctx.stroke();
-    const parts = String(card.content || '').split(/\n|；|;|，|、|→|vs|VS|Vs/u);
-    const half = (this.W - 220) / 2;
-    parts.slice(0, 2).forEach((part, i) => {
-      const cx = i === 0 ? 100 : this.W / 2 + 40;
-      ctx.fillStyle = t.accent; ctx.font = '700 40px ' + this.FONT;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillText(i === 0 ? 'A' : 'B', cx, 300);
-      ctx.fillStyle = this.INK; ctx.font = '600 40px ' + this.FONT;
-      const lines = this._wrap(ctx, part.replace(/^[AB][：:]/, ''), half).slice(0, 8);
-      let y = 360;
-      lines.forEach(l => { ctx.fillText(l, cx, y); y += 62; });
-    });
-    this._foot(ctx, t);
-  },
-
-  // 方法论卡（白底编号清单）
-  _method(ctx, card, t) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, this.W, this.H);
-    this._brandBar(ctx);
-    ctx.fillStyle = this.INK; ctx.font = '800 52px ' + this.FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText('方法论', 100, 150);
-    const items = String(card.content || '').split(/[；;\n，、→]/u).map(s => s.trim()).filter(Boolean).slice(0, 5);
-    let y = 300;
-    items.forEach((it, i) => {
-      ctx.fillStyle = t.accent;
-      ctx.beginPath(); ctx.arc(124, y + 34, 34, 0, 7); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = '800 38px ' + this.FONT;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(i + 1), 124, y + 38);
-      ctx.fillStyle = this.INK; ctx.font = '600 42px ' + this.FONT;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      const lines = this._wrap(ctx, it, this.W - 280).slice(0, 2);
-      lines.forEach(l => { ctx.fillText(l, 200, y); y += 60; });
-      y += 44;
-    });
-    this._foot(ctx, t);
-  },
-
-  // 时间线卡（白底竖向时间轴）
-  _timeline(ctx, card, t) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, this.W, this.H);
-    this._brandBar(ctx);
-    ctx.fillStyle = this.INK; ctx.font = '800 52px ' + this.FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText('时间线', 100, 150);
-    const nodes = String(card.content || '').split(/[；;\n，、→]/u).map(s => s.trim()).filter(Boolean).slice(0, 5);
-    let y = 300;
-    ctx.strokeStyle = t.accent; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.moveTo(130, y); ctx.lineTo(130, y + (nodes.length - 1) * 180); ctx.stroke();
-    nodes.forEach((nd, i) => {
-      ctx.fillStyle = t.accent;
-      ctx.beginPath(); ctx.arc(130, y + 30, 18, 0, 7); ctx.fill();
-      ctx.fillStyle = this.INK; ctx.font = '600 40px ' + this.FONT;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      const lines = this._wrap(ctx, nd, this.W - 260).slice(0, 2);
-      lines.forEach(l => { ctx.fillText(l, 200, y); y += 58; });
-      y += 70;
-    });
-    this._foot(ctx, t);
-  },
-
-  // 数据卡（暗底大数字）
-  _data(ctx, card, t) {
-    const g = ctx.createLinearGradient(0, 0, 0, this.H);
-    g.addColorStop(0, t.g[0]); g.addColorStop(1, t.g[1]);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, this.W, this.H);
-    ctx.fillStyle = 'rgba(255,255,255,.12)';
-    ctx.beginPath(); ctx.arc(920, 1180, 150, 0, 7); ctx.fill();
-    const content = card.content || '';
-    const m = content.match(/([\d.]+%?)/);
-    const num = m ? m[1] : '';
-    const rest = num ? content.replace(num, '').trim() : content;
-    ctx.fillStyle = t.accent; ctx.font = '700 36px ' + this.FONT;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText('📊 数据', 84, 160);
-    if (num) {
-      ctx.fillStyle = this.WHITE; ctx.font = '900 200px ' + this.FONT;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(num, this.W / 2, 560);
-    }
-    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = '500 44px ' + this.FONT;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    const lines = this._wrap(ctx, rest, this.W - 200).slice(0, 4);
-    let y = 720;
-    lines.forEach(l => { ctx.fillText(l, this.W / 2, y); y += 64; });
-    this._foot(ctx, t);
-  },
-
-  _router(type) {
-    return {
-      quote: this._quote.bind(this),
-      concept: this._concept.bind(this),
-      compare: this._compare.bind(this),
-      method: this._method.bind(this),
-      timeline: this._timeline.bind(this),
-      data: this._data.bind(this)
-    }[type] || this._concept.bind(this);
-  },
-
-  // 生成整套：第 0 张封面（含首条核心观点）+ 第 1 张补充观点卡（如有），共 1~2 张
-  generateSet(set, opts) {
-    const t = this._theme((opts && opts.theme) || set.theme);
-    const out = [];
-    const cards = Array.isArray(set.cards) ? set.cards : [];
-    // 封面：大标题 + 摘要 + 首条核心观点
-    let c = document.createElement('canvas'); c.width = this.W; c.height = this.H;
-    let x = c.getContext('2d'); x.textBaseline = 'top';
-    this._cover(x, set, t, cards[0]); out.push(c.toDataURL('image/jpeg', 0.92));
-    // 补充观点（最多 1 张，合并剩余 2~3 条）
-    if (cards.length > 1) {
-      const cc = document.createElement('canvas'); cc.width = this.W; cc.height = this.H;
-      const cx = cc.getContext('2d'); cx.textBaseline = 'top';
-      this._core(cx, set, t, cards.slice(1));
-      out.push(cc.toDataURL('image/jpeg', 0.92));
-    }
-    return out;
   }
 };
 
-// 暴露到 window，给 app.js / page.evaluate(WebView/Playwright) 用
 window.KnowledgeCards = KnowledgeCards;

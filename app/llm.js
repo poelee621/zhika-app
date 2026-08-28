@@ -154,14 +154,15 @@ ${text}
 严格只返回一个 JSON 对象，不要任何解释或 markdown 代码块：
 {
   "theme": "从下面 10 个英文 key 里选一个最贴合本内容的：tech(科技) / finance(财经) / emotion(情感) / food(美食) / travel(旅行) / career(职场) / knowledge(知识) / health(健康) / fashion(时尚) / life(生活)",
-  "title": "给这张卡起一个贴切标题（≤14字，具体、非套话）",
+  "title": "给这组卡起一个贴切标题（≤14字，具体、非套话）",
   "summary": "一句话概括核心主旨（≤25字）",
+  "template": "根据内容字数和分布推荐一个排版（用户可手切）：minimal(单条≤28字强留白) / xiaohongshu(中长一条/2-3条) / magazine(单条长文) / literary(一句金句/感性) / infograph(多条信息卡片阵列)",
   "cards": [
     {"content": "核心观点 1（≤50字）"},
     {"content": "补充观点 2（≤50字，可选）"}
   ]
 }
-注意：不要返回任何 HTML 字段，卡片由客户端渲染。cards 最多 2 张。`;
+注意：不要返回任何 HTML 字段，卡片由客户端渲染。cards 最多 2 张。template 字段若你拿不准，回退客户端会按字数自动选。`;
   },
 
   async call(plat, style, topic) {
@@ -294,9 +295,9 @@ ${text}
           title: obj.title || '知识卡片',
           summary: obj.summary || '',
           theme: obj.theme || 'knowledge',
+          template: ['minimal', 'xiaohongshu', 'magazine', 'literary', 'infograph'].includes(obj.template) ? obj.template : '',
           cards: obj.cards.map((x, i) => ({
             id: 'c' + Date.now() + '_' + i,
-            // 新结构无 type/label：统一为核心观点卡；兼容老结构（社区历史数据）
             type: x.type || 'core',
             label: x.label || '',
             content: String(x.content || '').trim()

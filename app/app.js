@@ -81,6 +81,7 @@
   // ===== 生成流程 =====
   let lastSet = null;
   let currentTheme = null;
+  let currentTemplate = null;   // 当前排版模板；空字符串 = 走 lastSet.template / pickTemplate 自动
   async function produceCards(text, source) {
     if (!isVip() && genCount() >= FREE_DAILY) {
       openVip('今日免费次数已用完，升级 PRO 无限生成');
@@ -105,11 +106,13 @@
     $('#resultTitle').textContent = set.title || '知识卡片';
     $('#resultSummary').textContent = set.summary || '';
     currentTheme = set.theme || 'knowledge';
+    currentTemplate = (set && set.template) || '';   // AI 推荐 → 用户可换
     const list = $('#cardList'); list.innerHTML = '';
-    const urls = KnowledgeCards.generateSet(set, { theme: currentTheme });
+    const urls = KnowledgeCards.generateSet(set, { theme: currentTheme, template: currentTemplate });
     paintCards(list, urls, set);
     $('#result').dataset.urls = JSON.stringify(urls);
     renderThemeBar();
+    renderTemplateBar();
   }
 
   // 把 DataURL 列表画进卡片网格（封面 + 各卡），点击单图 → 全屏预览
@@ -231,12 +234,49 @@
   function applyTheme(theme) {
     if (!lastSet) return;
     currentTheme = theme;
-    const urls = KnowledgeCards.generateSet(lastSet, { theme });
+    const urls = KnowledgeCards.generateSet(lastSet, { theme, template: currentTemplate });
     paintCards($('#cardList'), urls, lastSet);
     $('#result').dataset.urls = JSON.stringify(urls);
     renderThemeBar();
+    renderTemplateBar();
     const name = ((window.CoverEngine.THEMES[theme] || {}).label) || theme;
     setStatus('已切换主题：' + name, true);
+    setTimeout(() => setStatus('', false), 1800);
+  }
+
+  // 模板选择器（5 套）
+  function renderTemplateBar() {
+    const bar = $('#templateBar'); if (!bar) return;
+    const tpls = (window.KnowledgeCards && window.KnowledgeCards.TEMPLATES) || {};
+    const keys = Object.keys(tpls);
+    if (!keys.length) { bar.classList.add('hidden'); return; }
+    bar.classList.remove('hidden'); bar.innerHTML = '';
+    // 当前实际生效的模板（用户手选 vs 自动）
+    const active = currentTemplate || (lastSet && lastSet.template) || (KnowledgeCards && KnowledgeCards.pickTemplate(lastSet || { cards: [] })) || 'minimal';
+    const label = document.createElement('span');
+    label.className = 'theme-label'; label.textContent = '排版：';
+    bar.appendChild(label);
+    keys.forEach(k => {
+      const tp = tpls[k];
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'theme-chip' + (k === active ? ' active' : '');
+      chip.title = tp.desc || '';
+      chip.textContent = tp.icon + ' ' + tp.label;
+      if (k === active) { chip.style.background = 'var(--brand)'; chip.style.color = '#fff'; chip.style.borderColor = 'var(--brand)'; }
+      chip.onclick = () => applyTemplate(k);
+      bar.appendChild(chip);
+    });
+  }
+  function applyTemplate(tpl) {
+    if (!lastSet) return;
+    currentTemplate = tpl;
+    const urls = KnowledgeCards.generateSet(lastSet, { theme: currentTheme, template: tpl });
+    paintCards($('#cardList'), urls, lastSet);
+    $('#result').dataset.urls = JSON.stringify(urls);
+    renderTemplateBar();
+    const label = (KnowledgeCards.TEMPLATES[tpl] || {}).label || tpl;
+    setStatus('已切换排版：' + label, true);
     setTimeout(() => setStatus('', false), 1800);
   }
 
