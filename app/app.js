@@ -50,34 +50,6 @@
     });
   });
 
-  // ===== 选图（真机必须用 Capacitor Camera 原生桥；WKWebView 的 file input 在 iOS 上不弹选择器）=====
-  async function pickImage() {
-    const native = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
-    if (native) {
-      if (!(window.Capacitor.Plugins && window.Capacitor.Plugins.Camera)) {
-        throw new Error('相册组件未加载，请更新到最新 TestFlight 版本后重试');
-      }
-      try {
-        const { Camera } = window.Capacitor.Plugins;
-        const photo = await Camera.getPhoto({ quality: 80, resultType: 'base64', source: 'PHOTOLIBRARY' });
-        return photo.base64String;
-      } catch (e) {
-        throw new Error('调用系统相册失败：' + (e && e.message ? e.message : e) + '（请更新到最新版本后重试）');
-      }
-    }
-    // web 端走 file input（桌面/移动浏览器均支持）
-    return await new Promise((resolve, reject) => {
-      const inp = $('#fileInput');
-      inp.onchange = () => {
-        const f = inp.files[0]; if (!f) return reject(new Error('未选择'));
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result).split(',')[1]);
-        r.onerror = reject; r.readAsDataURL(f);
-      };
-      inp.click();
-    });
-  }
-
   // ===== 生成流程 =====
   let lastSet = null;
   let currentTheme = null;
@@ -348,25 +320,36 @@
     }
   });
 
-  // ===== 摄取：图片 =====
-  $('#pickImgBtn').addEventListener('click', async () => {
-    setStatus('请选择图片…', true);
-    try {
-      const b64 = await pickImage();
+  // ===== 摄取：图片（用 label[for=fileInput] 原生唤起 iOS 选图器，不依赖原生 Camera 插件）=====
+  (function setupImageUpload() {
+    const inp = $('#fileInput');
+    if (!inp) return;
+    inp.addEventListener('change', async () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
       setStatus('正在识别图中文字（OCR）…', true);
-      const r = await INGEST.ocr(b64);
-      const text = (r && r.text) || '';
-      if (!text.trim()) {
-        const e = new Error('未识别到文字'); e.kind = 'empty'; e.status = 0;
-        throw e;
+      try {
+        const b64 = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result).split(',')[1]);
+          r.onerror = reject; r.readAsDataURL(f);
+        });
+        const r = await INGEST.ocr(b64);
+        const text = (r && r.text) || '';
+        if (!text.trim()) {
+          const e = new Error('未识别到文字'); e.kind = 'empty'; e.status = 0;
+          throw e;
+        }
+        setStatus('识别成功，正在生成卡片…', true);
+        await produceCards(text, '图片OCR');
+      } catch (e) {
+        console.error('[ocr]', e);
+        setStatus(INGEST.explainError(e), true);
+      } finally {
+        inp.value = ''; // 允许重复选同一张
       }
-      setStatus('识别成功，正在生成卡片…', true);
-      await produceCards(text, '图片OCR');
-    } catch (e) {
-      console.error('[ocr]', e);
-      setStatus(INGEST.explainError(e), true);
-    }
-  });
+    });
+  })();
 
   // ===== 摄取：文本 =====
   $('#genTextBtn').addEventListener('click', () => {

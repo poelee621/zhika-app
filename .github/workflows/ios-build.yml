@@ -44,16 +44,8 @@ jobs:
           # ios/ 已提交到仓库（含相机权限等原生配置），已存在则跳过 cap add（避免交互挂起）
           [ -d ios ] || npx cap add ios
           npx cap sync ios
-          # 显式确保 CapacitorCamera 原生桥打进 Pods（避免 sync 漏装导致 IPA 无相册能力）
-          cd ios/App && pod install --repo-update && cd ../..
-
-      - name: Verify CapacitorCamera native bridge present
-        run: |
-          echo "--- Podfile must reference CapacitorCamera ---"
-          grep -q "CapacitorCamera" ios/App/Podfile || { echo "ERROR: Podfile missing CapacitorCamera"; exit 1; }
-          echo "--- Pods must contain CapacitorCamera source ---"
-          test -d ios/App/Pods/CapacitorCamera || { echo "ERROR: CapacitorCamera pod not installed"; exit 1; }
-          echo "OK: CapacitorCamera native bridge present"
+          # cap sync 内部已执行 pod install；图片上传改用 WKWebView 原生 <input type=file>，
+          # 不再依赖 CapacitorCamera 原生桥，故无需显式 pod install / Camera 校验步骤。
 
       - name: Import signing certificate
         env:
